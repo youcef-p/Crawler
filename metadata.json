@@ -1,0 +1,6 @@
+{
+  "name": "ReelScraper",
+  "description": "Scrape, index, and stream web videos and media in a full-screen vertical feed with ExoPlayer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

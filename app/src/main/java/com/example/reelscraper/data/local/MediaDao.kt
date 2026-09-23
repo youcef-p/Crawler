@@ -1,0 +1,92 @@
+package com.example.reelscraper.data.local
+
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Update
+import com.example.reelscraper.data.model.MediaType
+import com.example.reelscraper.data.model.ScrapedMedia
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface MediaDao {
+    @Query("SELECT * FROM scraped_media ORDER BY discoveredTimestamp DESC")
+    fun getAllMedia(): Flow<List<ScrapedMedia>>
+
+    @Query("SELECT * FROM scraped_media ORDER BY discoveredTimestamp DESC")
+    suspend fun getAllMediaList(): List<ScrapedMedia>
+
+    @Query("SELECT * FROM scraped_media WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' OR normalizedName LIKE '%' || :query || '%' ORDER BY discoveredTimestamp DESC")
+    fun searchMedia(query: String): Flow<List<ScrapedMedia>>
+
+    @Query("SELECT * FROM scraped_media WHERE mediaType = :type ORDER BY discoveredTimestamp DESC")
+    fun getMediaByType(type: MediaType): Flow<List<ScrapedMedia>>
+
+    @Query("SELECT * FROM scraped_media WHERE (title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' OR normalizedName LIKE '%' || :query || '%') AND mediaType = :type ORDER BY discoveredTimestamp DESC")
+    fun searchMediaByType(query: String, type: MediaType): Flow<List<ScrapedMedia>>
+
+    @Query("SELECT * FROM scraped_media WHERE isFavorite = 1 ORDER BY discoveredTimestamp DESC")
+    fun getFavorites(): Flow<List<ScrapedMedia>>
+
+    @Query("SELECT * FROM scraped_media WHERE id = :id LIMIT 1")
+    fun getMediaById(id: Long): Flow<ScrapedMedia?>
+
+    @Query("SELECT COUNT(*) FROM scraped_media")
+    fun getCount(): Flow<Int>
+
+    @Query("SELECT DISTINCT sourceDomain FROM scraped_media WHERE sourceDomain != '' ORDER BY sourceDomain ASC")
+    fun getDistinctSourceDomains(): Flow<List<String>>
+
+    /**
+     * Combined reactive filtering query:
+     * - keyword matching title, url, sourceDomain, sourcePageUrl, or normalizedName
+     * - source domains filter (filterDomains = 0 disables domain restriction, 1 enables restriction to domains list)
+     */
+    @Query("""
+        SELECT * FROM scraped_media
+        WHERE (:keyword IS NULL OR :keyword = '' OR 
+               title LIKE '%' || :keyword || '%' OR 
+               url LIKE '%' || :keyword || '%' OR 
+               sourceDomain LIKE '%' || :keyword || '%' OR 
+               sourcePageUrl LIKE '%' || :keyword || '%' OR 
+               normalizedName LIKE '%' || :keyword || '%')
+          AND (:filterDomains = 0 OR sourceDomain IN (:domains))
+        ORDER BY discoveredTimestamp DESC
+    """)
+    fun getFilteredMedia(keyword: String?, filterDomains: Int, domains: List<String>): Flow<List<ScrapedMedia>>
+
+    @Query("SELECT url FROM scraped_media")
+    suspend fun getAllExistingUrls(): List<String>
+
+    @Query("SELECT COUNT(*) FROM scraped_media WHERE normalizedName = :normalizedName AND sourceDomain = :sourceDomain")
+    suspend fun existsByNormalizedNameAndDomain(normalizedName: String, sourceDomain: String): Int
+
+    @Query("UPDATE scraped_media SET isFavorite = :isFavorite WHERE id = :id")
+    suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMedia(media: ScrapedMedia): Long
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMediaList(mediaList: List<ScrapedMedia>): List<Long>
+
+    @Update
+    suspend fun updateMedia(media: ScrapedMedia)
+
+    @Delete
+    suspend fun deleteMedia(media: ScrapedMedia)
+
+    @Query("DELETE FROM scraped_media WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM scraped_media")
+    suspend fun clearAll()
+
+    /**
+     * Deduplicates existing entries by keeping only the earliest entry for each (normalizedName, sourceDomain).
+     */
+    @Query("DELETE FROM scraped_media WHERE id NOT IN (SELECT MIN(id) FROM scraped_media GROUP BY normalizedName, sourceDomain)")
+    suspend fun clearDuplicates(): Int
+}
