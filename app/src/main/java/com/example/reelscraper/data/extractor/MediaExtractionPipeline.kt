@@ -1,5 +1,6 @@
 package com.example.reelscraper.data.extractor
 
+import com.example.reelscraper.data.model.MediaType
 import com.example.reelscraper.data.model.ScrapedMedia
 import com.example.reelscraper.data.util.MediaNormalizer
 
@@ -64,6 +65,39 @@ class MediaExtractionPipeline(
         // 9. JSON API scanning
         if (settings.enableJsonApiScan) {
             candidates.addAll(jsonApiExtractor.extract(context))
+        }
+
+        // 10. Preload/media link discovery catches sources hidden from normal video tags.
+        if (settings.discoverMediaFromLinkPreloads && context.document != null) {
+            context.document.select("link[href], a[href], area[href]").forEach { element ->
+                val rel = element.attr("rel").lowercase()
+                val type = element.attr("type").lowercase()
+                val href = element.attr("abs:href").ifBlank { element.attr("href") }
+                val lower = href.lowercase()
+                val looksLikeMedia = lower.contains(".m3u8") || lower.contains(".mpd") ||
+                    lower.contains(".mp4") || lower.contains(".webm") || lower.contains(".mov") ||
+                    lower.contains(".m4v") || lower.contains(".gif") ||
+                    type.startsWith("video/") || type == "application/vnd.apple.mpegurl" ||
+                    type == "application/dash+xml" || rel.contains("preload") && rel.contains("video")
+                if (looksLikeMedia && href.isNotBlank()) {
+                    val mediaType = when {
+                        lower.contains(".m3u8") || type == "application/vnd.apple.mpegurl" -> MediaType.HLS
+                        lower.contains(".mpd") || type == "application/dash+xml" -> MediaType.DASH
+                        lower.contains(".gif") -> MediaType.GIF
+                        else -> MediaType.VIDEO
+                    }
+                    candidates.add(
+                        ExtractedMediaCandidate(
+                            url = href,
+                            title = element.attr("title").ifBlank { null },
+                            mediaType = mediaType,
+                            sourcePageUrl = context.pageUrl,
+                            fileExtension = MediaNormalizer.extractExtension(href),
+                            extractorType = "LINK_PRELOAD"
+                        )
+                    )
+                }
+            }
         }
 
         // 10. WebView fallback if static extraction finds zero playable media
