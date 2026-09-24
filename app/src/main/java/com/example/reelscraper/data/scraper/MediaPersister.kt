@@ -6,6 +6,7 @@ import com.example.reelscraper.data.local.MediaDao
 import com.example.reelscraper.data.model.CrawlJob
 import com.example.reelscraper.data.model.CrawlJobStatus
 import com.example.reelscraper.data.model.ScrapedMedia
+import com.example.reelscraper.data.util.MediaNormalizer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -35,7 +36,7 @@ class MediaPersister(
     }
 
     private val dbMutex = Mutex()
-    private val sessionSeenKeys = Collections.synchronizedSet(mutableSetOf<Pair<String, String>>())
+    private val sessionSeenKeys = Collections.synchronizedSet(mutableSetOf<String>())
 
     private val _progress = MutableStateFlow(CrawlProgressState())
     val progress: StateFlow<CrawlProgressState> = _progress.asStateFlow()
@@ -121,9 +122,10 @@ class MediaPersister(
                 var sessionDuplicates = 0
 
                 for (item in candidates) {
-                    val key = Pair(item.normalizedName, item.sourceDomain)
+                    val canonicalUrl = MediaNormalizer.normalizeUrl(item.url, item.sourcePageUrl) ?: item.url
+                    val key = canonicalUrl.lowercase()
                     if (sessionSeenKeys.add(key)) {
-                        toInsert.add(item)
+                        toInsert.add(if (canonicalUrl == item.url) item else item.copy(url = canonicalUrl))
                     } else {
                         sessionDuplicates++
                     }
