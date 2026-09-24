@@ -21,7 +21,7 @@ import com.example.reelscraper.data.model.StreamSession
         ExtractionRule::class,
         CrawlJob::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -145,6 +145,27 @@ abstract class ReelScraperDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // The previous normalizedName+domain uniqueness rule incorrectly collapsed
+                // legitimate quality/variant URLs from the same page.
+                db.execSQL("DROP INDEX IF EXISTS index_scraped_media_normalizedName_sourceDomain")
+
+                // Remove any pre-existing duplicate URLs before adding the canonical URL index.
+                db.execSQL("""
+                    DELETE FROM scraped_media
+                    WHERE id NOT IN (
+                        SELECT MIN(id)
+                        FROM scraped_media
+                        GROUP BY url
+                    )
+                """.trimIndent())
+
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_scraped_media_url ON scraped_media(url)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_scraped_media_normalizedName_sourceDomain ON scraped_media(normalizedName, sourceDomain)")
+            }
+        }
+
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
@@ -186,7 +207,7 @@ abstract class ReelScraperDatabase : RoomDatabase() {
                     ReelScraperDatabase::class.java,
                     "reel_scraper_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(DB_CALLBACK)
                     .fallbackToDestructiveMigration(dropAllTables = false)
                     .build()
