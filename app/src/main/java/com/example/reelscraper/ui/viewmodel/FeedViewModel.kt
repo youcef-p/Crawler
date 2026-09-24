@@ -165,6 +165,7 @@ class FeedViewModel(
     private val _feedState = MutableStateFlow(FeedUiState())
     private var lastPlaybackPersistAt: Long = 0L
     private var lastPersistedMediaId: Long = -1L
+    private var lastPersistedCompleted: Boolean = false
     val feedState: StateFlow<FeedUiState> = _feedState.asStateFlow()
 
     fun onKeywordChanged(newKeyword: String) {
@@ -368,9 +369,13 @@ class FeedViewModel(
         if (media != null && durationMs > 0 && playbackStateDao != null) {
             val now = System.currentTimeMillis()
             val isCompleted = (positionMs.toFloat() / durationMs.toFloat()) >= (appSettings.value.markWatchedThreshold / 100f)
-            if (!isCompleted && media.id == lastPersistedMediaId && now - lastPlaybackPersistAt < 1000L) return
+            if (media.id == lastPersistedMediaId &&
+                now - lastPlaybackPersistAt < 1000L &&
+                (!isCompleted || lastPersistedCompleted)
+            ) return
             lastPlaybackPersistAt = now
             lastPersistedMediaId = media.id
+            lastPersistedCompleted = isCompleted
             viewModelScope.launch(Dispatchers.IO) {
                 playbackStateDao.upsertPlaybackState(
                     PlaybackState(
