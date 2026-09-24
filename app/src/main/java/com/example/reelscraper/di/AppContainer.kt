@@ -4,6 +4,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.reelscraper.data.local.CrawlJobDao
+import com.example.reelscraper.data.local.PlaybackStateDao
+import com.example.reelscraper.data.local.ChapterDao
+import com.example.reelscraper.data.local.SubtitleTrackDao
+import com.example.reelscraper.data.local.TrickPlayDao
+import com.example.reelscraper.data.local.HeatmapDao
 import com.example.reelscraper.data.local.MediaDao
 import com.example.reelscraper.data.local.ReelScraperDatabase
 import com.example.reelscraper.data.local.SiteProfileDao
@@ -17,6 +22,8 @@ import com.example.reelscraper.data.scraper.WebScraperEngine
 import com.example.reelscraper.data.settings.SettingsRepository
 import com.example.reelscraper.player.DynamicStreamResolver
 import com.example.reelscraper.player.LocalStreamingProxy
+import com.example.reelscraper.player.TrickPlayManager
+import com.example.reelscraper.intelligence.chapter.LocalChapterGenerator
 import com.example.reelscraper.ui.viewmodel.FeedViewModel
 import com.example.reelscraper.ui.viewmodel.ScraperViewModel
 import com.example.reelscraper.ui.viewmodel.SearchViewModel
@@ -32,6 +39,13 @@ interface AppContainer {
     val streamSessionDao: StreamSessionDao
     val siteProfileDao: SiteProfileDao
     val crawlJobDao: CrawlJobDao
+    val playbackStateDao: PlaybackStateDao
+    val chapterDao: ChapterDao
+    val subtitleTrackDao: SubtitleTrackDao
+    val trickPlayDao: TrickPlayDao
+    val heatmapDao: HeatmapDao
+    val trickPlayManager: TrickPlayManager
+    val chapterGenerator: LocalChapterGenerator
     val okHttpClient: OkHttpClient
     val localStreamingProxy: LocalStreamingProxy
     val dynamicStreamResolver: DynamicStreamResolver
@@ -63,6 +77,38 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val crawlJobDao: CrawlJobDao by lazy {
         database.crawlJobDao()
+    }
+
+    override val playbackStateDao: PlaybackStateDao by lazy {
+        database.playbackStateDao()
+    }
+
+    override val chapterDao: ChapterDao by lazy {
+        database.chapterDao()
+    }
+
+    override val subtitleTrackDao: SubtitleTrackDao by lazy {
+        database.subtitleTrackDao()
+    }
+
+    override val trickPlayDao: TrickPlayDao by lazy {
+        database.trickPlayDao()
+    }
+
+    override val heatmapDao: HeatmapDao by lazy {
+        database.heatmapDao()
+    }
+
+    override val trickPlayManager: TrickPlayManager by lazy {
+        TrickPlayManager(
+            context = context,
+            trickPlayDao = trickPlayDao,
+            okHttpClient = okHttpClient
+        )
+    }
+
+    override val chapterGenerator: LocalChapterGenerator by lazy {
+        LocalChapterGenerator(chapterDao)
     }
 
     override val settingsRepository: SettingsRepository by lazy {
@@ -130,7 +176,14 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
                         FeedViewModel(
                             repository = mediaRepository,
                             streamResolver = dynamicStreamResolver,
-                            settingsRepository = settingsRepository
+                            settingsRepository = settingsRepository,
+                            trickPlayManager = trickPlayManager,
+                            chapterGenerator = chapterGenerator,
+                            playbackStateDao = playbackStateDao,
+                            chapterDao = chapterDao,
+                            subtitleDao = subtitleTrackDao,
+                            runtimeOkHttpClient = okHttpClient,
+                            runtimeHeatmapDao = heatmapDao
                         ) as T
                     }
                     modelClass.isAssignableFrom(SearchViewModel::class.java) -> {
