@@ -139,12 +139,14 @@ class WebScraperEngine(
         visitedUrls.add(normalizedSeed)
 
         val semaphore = Semaphore(settings.maxConcurrentRequests.coerceIn(1, 10))
+        val seedDomain = MediaNormalizer.normalizeDomain(normalizedSeed)
         var pagesVisitedCount = 0
 
         try {
             while (queue.isNotEmpty()) {
                 val node = queue.poll() ?: break
                 if (node.level > targetMaxLevel) continue
+                if (pagesVisitedCount >= settings.maxPagesPerCrawl.coerceAtLeast(1)) break
 
                 // Direct media URL handling
                 if (isDirectMediaUrl(node.url)) {
@@ -178,22 +180,43 @@ class WebScraperEngine(
 
                 try {
                     semaphore.withPermit {
-                        val request = Request.Builder()
-                            .url(node.url)
-                            .header("User-Agent", USER_AGENT)
-                            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8")
+                        val requestClient = okHttpClient.newBuilder()
+                            .callTimeout(settings.pageTimeoutSeconds.coerceIn(2, 120).toLong(), TimeUnit.SECONDS)
                             .build()
-
-                        val response = okHttpClient.newCall(request).execute()
-                        val finalUrl = response.request.url.toString()
-                        val contentType = response.header("Content-Type") ?: ""
+                        var response: okhttp3.Response? = null
+                        var lastError: Exception? = null
+                        repeat((settings.retryCount.coerceIn(0, 5) + 1)) { attempt ->
+                            if (response != null) return@repeat
+                            try {
+                                val request = Request.Builder()
+                                    .url(node.url)
+                                    .header("User-Agent", USER_AGENT)
+                                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8")
+                                    .build()
+                                val candidateResponse = requestClient.newCall(request).execute()
+                                if (candidateResponse.isSuccessful || candidateResponse.code in 300..399 || attempt == settings.retryCount.coerceIn(0, 5)) {
+                                    response = candidateResponse
+                                } else {
+                                    candidateResponse.close()
+                                    delay((200L * (attempt + 1)).coerceAtMost(1500L))
+                                }
+                            } catch (e: Exception) {
+                                lastError = e
+                                if (attempt < settings.retryCount.coerceIn(0, 5)) {
+                                    delay((200L * (attempt + 1)).coerceAtMost(1500L))
+                                }
+                            }
+                        }
+                        val finalResponse = response ?: throw (lastError ?: IllegalStateException("Request failed"))
+                        val finalUrl = finalResponse.request.url.toString()
+                        val contentType = finalResponse.header("Content-Type") ?: ""
                         val responseHeaders = mutableMapOf<String, String>()
-                        for (i in 0 until response.headers.size) {
-                            responseHeaders[response.headers.name(i)] = response.headers.value(i)
+                        for (i in 0 until finalResponse.headers.size) {
+                            responseHeaders[finalResponse.headers.name(i)] = finalResponse.headers.value(i)
                         }
 
-                        val body = response.body?.string() ?: ""
-                        response.close()
+                        val body = finalResponse.body?.string() ?: ""
+                        finalResponse.close()
 
                         val doc = if (contentType.contains("text/html") || body.contains("<html", ignoreCase = true)) {
                             Jsoup.parse(body, finalUrl)
@@ -227,6 +250,11 @@ class WebScraperEngine(
                                 if (linkCount >= settings.maxLinksPerPage) break
                                 val href = link.attr("abs:href").ifBlank { link.attr("href") }
                                 val normalized = MediaNormalizer.normalizeUrl(href, finalUrl) ?: continue
+                                val linkDomain = MediaNormalizer.normalizeDomain(normalized)
+                                val sameDomain = linkDomain == seedDomain
+                                val subdomainAllowed = settings.includeSubdomains &&
+                                    (linkDomain == seedDomain || linkDomain.endsWith("." + seedDomain))
+                                if (settings.sameDomainOnly && !sameDomain && !subdomainAllowed) continue
 
                                 if (visitedUrls.add(normalized)) {
                                     linkCount++
