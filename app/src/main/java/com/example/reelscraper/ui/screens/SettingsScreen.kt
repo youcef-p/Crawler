@@ -254,6 +254,46 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Discovery controls
+            SettingsSectionCard(title = "Smart Discovery", icon = Icons.Default.Radar) {
+                SettingsToggleRow(
+                    title = "Stay on same domain",
+                    subtitle = "Avoid crawling unrelated external websites",
+                    checked = settings.sameDomainOnly,
+                    onCheckedChange = { viewModel.updateDiscoverySettings(it, settings.includeSubdomains, settings.discoverSitemaps, settings.discoverMediaFromLinkPreloads, settings.followPaginationLinks) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SettingsToggleRow(
+                    title = "Include subdomains",
+                    subtitle = "Also follow media and pages on subdomains of the seed site",
+                    checked = settings.includeSubdomains,
+                    onCheckedChange = { viewModel.updateDiscoverySettings(settings.sameDomainOnly, it, settings.discoverSitemaps, settings.discoverMediaFromLinkPreloads, settings.followPaginationLinks) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SettingsToggleRow(
+                    title = "Discover sitemap URLs",
+                    subtitle = "Use robots.txt and common sitemap locations to find media pages",
+                    checked = settings.discoverSitemaps,
+                    onCheckedChange = { viewModel.updateDiscoverySettings(settings.sameDomainOnly, settings.includeSubdomains, it, settings.discoverMediaFromLinkPreloads, settings.followPaginationLinks) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SettingsToggleRow(
+                    title = "Scan preload/media links",
+                    subtitle = "Inspect preload, source, poster and media-related link attributes",
+                    checked = settings.discoverMediaFromLinkPreloads,
+                    onCheckedChange = { viewModel.updateDiscoverySettings(settings.sameDomainOnly, settings.includeSubdomains, settings.discoverSitemaps, it, settings.followPaginationLinks) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SettingsToggleRow(
+                    title = "Follow pagination",
+                    subtitle = "Follow next-page and pagination links while crawling",
+                    checked = settings.followPaginationLinks,
+                    onCheckedChange = { viewModel.updateDiscoverySettings(settings.sameDomainOnly, settings.includeSubdomains, settings.discoverSitemaps, settings.discoverMediaFromLinkPreloads, it) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // 1. Advanced Playback Engine Section
             SettingsSectionCard(title = "Advanced Playback Engine", icon = Icons.Default.Speed) {
                 // 60fps Converter
