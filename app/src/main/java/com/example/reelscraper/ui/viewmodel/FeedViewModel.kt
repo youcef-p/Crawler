@@ -97,9 +97,9 @@ class FeedViewModel(
         )
 
     val hasActiveFilters: StateFlow<Boolean> = combine(
-        _keyword, _selectedDomains, _selectedFormat, _onlyFavorites, _onlyDynamic
-    ) { kw, domains, fmt, fav, dyn ->
-        kw.isNotBlank() || domains.isNotEmpty() || fmt != "all" || fav || dyn
+        _keyword, _selectedDomains, _selectedFormat, _onlyFavorites, _onlyDynamic, _hideBroken
+    ) { kw, domains, fmt, fav, dyn, hideBrk ->
+        kw.isNotBlank() || domains.isNotEmpty() || fmt != "all" || fav || dyn || !hideBrk
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
