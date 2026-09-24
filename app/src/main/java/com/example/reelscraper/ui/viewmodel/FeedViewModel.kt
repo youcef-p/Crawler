@@ -348,7 +348,9 @@ class FeedViewModel(
             }
 
             var lastError = "Failed to refresh stream"
-            repeat(attempts) { attempt ->
+            var stopRetrying = false
+            for (attempt in 0 until attempts) {
+                if (stopRetrying) break
                 if (attempt > 0) delay((250L * attempt).coerceAtMost(1000L))
                 try {
                     when (val result = resolver.refreshStream(media, settings)) {
@@ -363,7 +365,7 @@ class FeedViewModel(
                         }
                         is StreamResolutionResult.Error -> {
                             lastError = result.message
-                            if (result.isUnsupported) return@repeat
+                            stopRetrying = result.isUnsupported
                         }
                     }
                 } catch (e: Exception) {
