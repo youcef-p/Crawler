@@ -60,8 +60,8 @@ class FeedViewModel(
     private val streamResolver: DynamicStreamResolver? = null,
     private val settingsRepository: SettingsRepository? = null,
     val trickPlayManager: TrickPlayManager? = null,
-    val heatmapTracker: HeatmapTracker? = null,
-    val predictivePreloader: PredictivePreloader? = null,
+    private val suppliedHeatmapTracker: HeatmapTracker? = null,
+    private val suppliedPredictivePreloader: PredictivePreloader? = null,
     val chapterGenerator: LocalChapterGenerator? = null,
     val subtitleGenerator: LocalSubtitleGenerator? = null,
     private val playbackStateDao: PlaybackStateDao? = null,
@@ -72,10 +72,10 @@ class FeedViewModel(
 ) : ViewModel() {
 
     val predictivePreloader: PredictivePreloader? =
-        predictivePreloader ?: runtimeOkHttpClient?.let { PredictivePreloader(it, viewModelScope) }
+        suppliedPredictivePreloader ?: runtimeOkHttpClient?.let { PredictivePreloader(it, viewModelScope) }
 
     val heatmapTracker: HeatmapTracker? =
-        heatmapTracker ?: runtimeHeatmapDao?.let { HeatmapTracker(it, viewModelScope) }
+        suppliedHeatmapTracker ?: runtimeHeatmapDao?.let { HeatmapTracker(it, viewModelScope) }
 
     val appSettings: StateFlow<AppSettings> = settingsRepository?.settingsFlow
         ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
