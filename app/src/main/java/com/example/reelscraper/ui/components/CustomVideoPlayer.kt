@@ -257,7 +257,7 @@ fun CustomVideoPlayer(
     }
 
     // Player state and format listener
-    DisposableEffect(exoPlayer) {
+    DisposableEffect(exoPlayer, resumePositionMs) {
         val player = exoPlayer ?: return@DisposableEffect onDispose { }
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -317,6 +317,18 @@ fun CustomVideoPlayer(
             }
         }
         player.addListener(listener)
+
+        // The saved resume position may arrive after the player is already READY.
+        if (player.playbackState == Player.STATE_READY &&
+            !resumeApplied &&
+            resumePositionMs > 5_000L &&
+            player.duration > 0L &&
+            resumePositionMs < player.duration - 2_000L
+        ) {
+            player.seekTo(resumePositionMs)
+            currentPosition = resumePositionMs
+            resumeApplied = true
+        }
 
         onDispose {
             player.removeListener(listener)
