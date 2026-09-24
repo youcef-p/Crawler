@@ -153,6 +153,8 @@ class FeedViewModel(
     )
 
     private val _feedState = MutableStateFlow(FeedUiState())
+    private var lastPlaybackPersistAt: Long = 0L
+    private var lastPersistedMediaId: Long = -1L
     val feedState: StateFlow<FeedUiState> = _feedState.asStateFlow()
 
     fun onKeywordChanged(newKeyword: String) {
@@ -237,7 +239,9 @@ class FeedViewModel(
                 chapterDao?.getChaptersForMediaDirect(media.id) ?: emptyList()
             }
             if (existingChapters.isNotEmpty()) {
-                _feedState.update { it.copy(activeChapters = existingChapters) }
+                if (_feedState.value.currentItemIndex < mediaList.value.size && mediaList.value[_feedState.value.currentItemIndex].id == media.id) {
+                    _feedState.update { it.copy(activeChapters = existingChapters) }
+                }
             } else if (appSettings.value.enableAutoChapters && chapterGenerator != null) {
                 val generated = chapterGenerator.generateChaptersIfNeeded(media)
                 _feedState.update { it.copy(activeChapters = generated) }
@@ -247,7 +251,9 @@ class FeedViewModel(
             val existingSubs = withContext(Dispatchers.IO) {
                 subtitleDao?.getSubtitlesForMediaDirect(media.id) ?: emptyList()
             }
-            _feedState.update { it.copy(activeSubtitles = existingSubs) }
+            if (_feedState.value.currentItemIndex < mediaList.value.size && mediaList.value[_feedState.value.currentItemIndex].id == media.id) {
+                _feedState.update { it.copy(activeSubtitles = existingSubs) }
+            }
 
             // Trigger background speech recognition if enabled and none exists
             if (existingSubs.isEmpty() && appSettings.value.enableLocalTranscription && subtitleGenerator != null) {
@@ -258,7 +264,9 @@ class FeedViewModel(
                         profile = appSettings.value.transcriptionQuality
                     )
                     if (generatedSub != null) {
-                        _feedState.update { it.copy(activeSubtitles = listOf(generatedSub)) }
+                        if (_feedState.value.currentItemIndex < mediaList.value.size && mediaList.value[_feedState.value.currentItemIndex].id == media.id) {
+                            _feedState.update { it.copy(activeSubtitles = listOf(generatedSub)) }
+                        }
                     }
                 }
             }
@@ -346,7 +354,11 @@ class FeedViewModel(
         val currentIdx = _feedState.value.currentItemIndex
         val media = mediaList.value.getOrNull(currentIdx)
         if (media != null && durationMs > 0 && playbackStateDao != null) {
-            val isCompleted = (positionMs.toFloat() / durationMs.toFloat()) >= (appSettings.value.markWatchedThreshold / 100f)
+            val now = System.currentTimeMillis()
+            val isCompleted = = (positionMs.toFloat() / durationMs.toFloat()) >= (appSettings.value.markWatchedThreshold / 100f)
+            if (!isCompleted && media.id == lastPersistedMediaId && now - lastPlaybackPersistAt < 1000L) return
+            lastPlaybackPersistAt = now
+            lastPersistedMediaId = media.id
             viewModelScope.launch(Dispatchers.IO) {
                 playbackStateDao.upsertPlaybackState(
                     PlaybackState(
