@@ -24,6 +24,7 @@ import com.example.reelscraper.player.DynamicStreamResolver
 import com.example.reelscraper.player.LocalStreamingProxy
 import com.example.reelscraper.player.TrickPlayManager
 import com.example.reelscraper.intelligence.chapter.LocalChapterGenerator
+import com.example.reelscraper.intelligence.subtitle.AndroidSpeechSubtitleGenerator
 import com.example.reelscraper.ui.viewmodel.FeedViewModel
 import com.example.reelscraper.ui.viewmodel.ScraperViewModel
 import com.example.reelscraper.ui.viewmodel.SearchViewModel
@@ -46,6 +47,7 @@ interface AppContainer {
     val heatmapDao: HeatmapDao
     val trickPlayManager: TrickPlayManager
     val chapterGenerator: LocalChapterGenerator
+    val subtitleGenerator: AndroidSpeechSubtitleGenerator
     val okHttpClient: OkHttpClient
     val localStreamingProxy: LocalStreamingProxy
     val dynamicStreamResolver: DynamicStreamResolver
@@ -109,6 +111,13 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val chapterGenerator: LocalChapterGenerator by lazy {
         LocalChapterGenerator(chapterDao)
+    }
+
+    override val subtitleGenerator: AndroidSpeechSubtitleGenerator by lazy {
+        AndroidSpeechSubtitleGenerator(
+            context = context,
+            subtitleDao = subtitleTrackDao
+        )
     }
 
     override val settingsRepository: SettingsRepository by lazy {
@@ -179,6 +188,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
                             settingsRepository = settingsRepository,
                             trickPlayManager = trickPlayManager,
                             chapterGenerator = chapterGenerator,
+                            subtitleGenerator = subtitleGenerator,
                             playbackStateDao = playbackStateDao,
                             chapterDao = chapterDao,
                             subtitleDao = subtitleTrackDao,
