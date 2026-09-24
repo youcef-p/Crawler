@@ -221,6 +221,7 @@ fun ReelsFeedScreen(
                     settings = settings,
                     aspectRatio = feedState.aspectRatio,
                     playbackSpeed = feedState.playbackSpeed,
+                    resumePositionMs = feedState.resumePositionMs,
                     trickPlayManager = viewModel.trickPlayManager,
                     heatmapTracker = viewModel.heatmapTracker,
                     chapters = feedState.activeChapters,
