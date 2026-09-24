@@ -44,6 +44,7 @@ data class FeedUiState(
     val isPlaying: Boolean = true,
     val isMuted: Boolean = false,
     val currentPositionMs: Long = 0L,
+    val resumePositionMs: Long = 0L,
     val totalDurationMs: Long = 0L,
     val isControlsVisible: Boolean = true,
     val isBuffering: Boolean = false,
@@ -223,6 +224,7 @@ class FeedViewModel(
                 currentItemIndex = newIndex,
                 isPlaying = true,
                 currentPositionMs = 0L,
+                resumePositionMs = 0L,
                 totalDurationMs = 0L,
                 isBuffering = true,
                 activeChapters = emptyList(),
@@ -241,6 +243,30 @@ class FeedViewModel(
                 preloadCount = appSettings.value.preloadAdjacentCount,
                 isDataSaver = appSettings.value.dataSaverMode
             )
+
+            if (appSettings.value.resumePlayback &&
+                playbackStateDao != null &&
+                appSettings.value.resumeBehavior != "BEGINNING"
+            ) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val state = playbackStateDao.getPlaybackStateDirect(media.id)
+                    val savedPosition = when (appSettings.value.resumeBehavior) {
+                        "ALWAYS" -> state?.positionMillis ?: 0L
+                        "ASK" -> 0L
+                        else -> state?.positionMillis ?: 0L
+                    }
+                    if (state != null &&
+                        savedPosition > 5_000L &&
+                        state.durationMillis > 0L &&
+                        savedPosition < state.durationMillis - 2_000L &&
+                        _feedState.value.currentItemIndex == newIndex
+                    ) {
+                        withContext(Dispatchers.Main) {
+                            _feedState.update { it.copy(resumePositionMs = savedPosition) }
+                        }
+                    }
+                }
+            }
 
             // Load or generate chapters & subtitles
             loadIntelligenceForMedia(media)
