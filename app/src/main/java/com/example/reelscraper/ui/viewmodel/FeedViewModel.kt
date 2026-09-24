@@ -221,7 +221,9 @@ class FeedViewModel(
                 isPlaying = true,
                 currentPositionMs = 0L,
                 totalDurationMs = 0L,
-                isBuffering = true
+                isBuffering = true,
+                activeChapters = emptyList(),
+                activeSubtitles = emptyList()
             )
         }
 
