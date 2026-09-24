@@ -252,8 +252,15 @@ class WebScraperEngine(
                                 .mapNotNull { MediaNormalizer.normalizeUrl(it, finalUrl) }
                                 .take(settings.maxLinksPerPage.coerceAtLeast(1))
                                 .forEach { sitemapUrl ->
-                                    if (visitedUrls.add(sitemapUrl)) {
-                                        queue.add(CrawlNode(sitemapUrl, (node.level + 1).coerceAtMost(targetMaxLevel), 800 + discoveryPriority(sitemapUrl)))
+                                    val sitemapDomain = MediaNormalizer.normalizeDomain(sitemapUrl)
+                                    val sameDomain = sitemapDomain == seedDomain
+                                    val subdomainAllowed = settings.includeSubdomains &&
+                                        (sitemapDomain == seedDomain || sitemapDomain.endsWith("." + seedDomain))
+                                    val nextLevel = node.level + 1
+                                    if (nextLevel <= targetMaxLevel &&
+                                        (!settings.sameDomainOnly || sameDomain || subdomainAllowed) &&
+                                        visitedUrls.add(sitemapUrl)) {
+                                        queue.add(CrawlNode(sitemapUrl, nextLevel, 800 + discoveryPriority(sitemapUrl)))
                                     }
                                 }
                         }
