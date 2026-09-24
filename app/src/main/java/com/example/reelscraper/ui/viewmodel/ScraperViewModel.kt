@@ -2,9 +2,9 @@ package com.example.reelscraper.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.reelscraper.data.model.ScrapedMedia
+import com.example.reelscraper.data.model.CrawlJobStatus
 import com.example.reelscraper.data.repository.MediaRepository
-import com.example.reelscraper.data.scraper.ScrapeProgress
+import com.example.reelscraper.data.scraper.CrawlProgressState
 import com.example.reelscraper.data.settings.AppSettings
 import com.example.reelscraper.data.settings.SettingsRepository
 import kotlinx.coroutines.Job
@@ -24,9 +24,15 @@ data class SampleSite(
 
 sealed interface ScrapeUiState {
     object Idle : ScrapeUiState
-    data class Scanning(val progress: ScrapeProgress) : ScrapeUiState
-    data class Success(val itemsFound: Int, val recentItems: List<ScrapedMedia>) : ScrapeUiState
-    data class Error(val message: String) : ScrapeUiState
+    data class Scanning(val progress: CrawlProgressState) : ScrapeUiState
+    data class Success(
+        val itemsFound: Int,
+        val pagesScanned: Int,
+        val duplicatesSkipped: Int,
+        val summaryMessage: String
+    ) : ScrapeUiState
+    data class Stopped(val itemsKept: Int, val message: String) : ScrapeUiState
+    data class Error(val message: String, val itemsKept: Int = 0) : ScrapeUiState
 }
 
 data class ScraperScreenState(
@@ -93,6 +99,21 @@ class ScraperViewModel(
         }
         viewModelScope.launch {
             repository.seedStarterSamplesIfEmpty()
+            repository.cleanupOrphanJobs()
+        }
+        // Collect live crawl progress
+        viewModelScope.launch {
+            repository.crawlProgress.collect { progress ->
+                if (progress.jobStatus == CrawlJobStatus.RUNNING && !progress.isFinished) {
+                    _uiState.update {
+                        if (it.uiState is ScrapeUiState.Scanning) {
+                            it.copy(uiState = ScrapeUiState.Scanning(progress))
+                        } else {
+                            it
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -145,13 +166,18 @@ class ScraperViewModel(
             _uiState.update {
                 it.copy(
                     uiState = ScrapeUiState.Scanning(
-                        ScrapeProgress(
-                            statusMessage = "Starting Level 1 scan on $url...",
+                        CrawlProgressState(
+                            pagesScanned = 0,
+                            linksDiscovered = 0,
+                            mediaFound = 0,
+                            duplicatesSkipped = 0,
+                            rowsInserted = 0,
+                            currentDepth = 1,
+                            maxDepth = levels,
                             currentUrl = url,
-                            itemsFound = 0,
-                            currentLevel = 1,
-                            maxLevel = levels,
-                            pagesVisited = 0
+                            statusMessage = "Starting Level 1 scan on $url...",
+                            jobStatus = CrawlJobStatus.RUNNING,
+                            isFinished = false
                         )
                     )
                 )
@@ -160,34 +186,82 @@ class ScraperViewModel(
             val result = repository.scrapeAndIndex(
                 url = url,
                 depth = levels,
-                settings = settings,
-                onProgress = { progress ->
-                    _uiState.update { it.copy(uiState = ScrapeUiState.Scanning(progress)) }
-                }
+                settings = settings
             )
 
-            result.onSuccess { scrapedList ->
-                if (scrapedList.isNotEmpty()) {
-                    _uiState.update {
-                        it.copy(uiState = ScrapeUiState.Success(scrapedList.size, scrapedList.take(5)))
+            result.onSuccess { finalProgress ->
+                when (finalProgress.jobStatus) {
+                    CrawlJobStatus.COMPLETED -> {
+                        if (finalProgress.rowsInserted > 0) {
+                            _uiState.update {
+                                it.copy(
+                                    uiState = ScrapeUiState.Success(
+                                        itemsFound = finalProgress.rowsInserted,
+                                        pagesScanned = finalProgress.pagesScanned,
+                                        duplicatesSkipped = finalProgress.duplicatesSkipped,
+                                        summaryMessage = "Scan complete! Added ${finalProgress.rowsInserted} new items (${finalProgress.duplicatesSkipped} duplicates skipped)."
+                                    )
+                                )
+                            }
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    uiState = ScrapeUiState.Error(
+                                        message = "No new playable media found across $levels level(s) (${finalProgress.duplicatesSkipped} duplicate items skipped).",
+                                        itemsKept = 0
+                                    )
+                                )
+                            }
+                        }
                     }
-                } else {
-                    _uiState.update {
-                        it.copy(uiState = ScrapeUiState.Error("No playable media found across $levels level(s). Check URL or advanced extraction settings."))
+                    CrawlJobStatus.CANCELLED -> {
+                        _uiState.update {
+                            it.copy(
+                                uiState = ScrapeUiState.Stopped(
+                                    itemsKept = finalProgress.rowsInserted,
+                                    message = "Scan stopped. ${finalProgress.rowsInserted} items kept in Library."
+                                )
+                            )
+                        }
                     }
+                    CrawlJobStatus.FAILED -> {
+                        _uiState.update {
+                            it.copy(
+                                uiState = ScrapeUiState.Error(
+                                    message = finalProgress.statusMessage.ifBlank { "Scan failed." },
+                                    itemsKept = finalProgress.rowsInserted
+                                )
+                            )
+                        }
+                    }
+                    CrawlJobStatus.RUNNING -> Unit
                 }
             }.onFailure { error ->
+                val currentProgress = repository.crawlProgress.value
                 _uiState.update {
-                    it.copy(uiState = ScrapeUiState.Error(error.localizedMessage ?: "Failed to scan URL. Please verify internet connection."))
+                    it.copy(
+                        uiState = ScrapeUiState.Error(
+                            message = error.localizedMessage ?: "Failed to scan URL. Please verify internet connection.",
+                            itemsKept = currentProgress.rowsInserted
+                        )
+                    )
                 }
             }
         }
     }
 
     fun cancelScan() {
+        val currentRows = repository.crawlProgress.value.rowsInserted
         scanJob?.cancel()
         scanJob = null
-        _uiState.update { it.copy(uiState = ScrapeUiState.Idle) }
+        _uiState.update {
+            it.copy(
+                uiState = ScrapeUiState.Stopped(
+                    itemsKept = currentRows,
+                    message = "Scan stopped. $currentRows items kept in Library."
+                )
+            )
+        }
     }
 
     fun resetState() {

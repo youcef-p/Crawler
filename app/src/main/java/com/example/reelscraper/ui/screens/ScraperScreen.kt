@@ -31,9 +31,11 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -123,7 +125,7 @@ fun ScraperScreen(
                         color = Color.White
                     )
                     Text(
-                        text = "Crawl up to 10 levels deep & extract playable media",
+                        text = "Live incremental crawl & media indexing",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.LightGray
                     )
@@ -295,14 +297,14 @@ fun ScraperScreen(
                             .testTag("scan_button")
                     ) {
                         if (isScanning) {
-                            CircularProgressIndicator(
-                                color = CinemaBlack,
-                                strokeWidth = 2.dp,
+                            Icon(
+                                imageVector = Icons.Default.StopCircle,
+                                contentDescription = null,
                                 modifier = Modifier.size(20.dp)
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Cancel Scan",
+                                text = "Stop Scan",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
                             )
@@ -357,7 +359,7 @@ fun ScraperScreen(
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Text(
-                                            text = "Level ${uiState.progress.currentLevel} of ${uiState.progress.maxLevel}",
+                                            text = "Level ${uiState.progress.currentDepth} of ${uiState.progress.maxDepth}",
                                             color = NeonCyan,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
@@ -369,7 +371,7 @@ fun ScraperScreen(
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
                                         Text(
-                                            text = "${uiState.progress.pagesVisited} pages scanned",
+                                            text = "${uiState.progress.pagesScanned} pages scanned",
                                             color = Color.White,
                                             fontSize = 11.sp,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -391,21 +393,98 @@ fun ScraperScreen(
                                     trackColor = CinemaSurfaceVariant
                                 )
 
+                                // Live metrics row
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "${uiState.progress.itemsFound} playable media discovered",
-                                        color = Color.LightGray,
-                                        fontSize = 11.sp
-                                    )
+                                    Column {
+                                        Text(
+                                            text = "${uiState.progress.rowsInserted} added to library • ${uiState.progress.duplicatesSkipped} dupes",
+                                            color = EmeraldGreen,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = "${uiState.progress.linksDiscovered} links discovered",
+                                            color = Color.LightGray,
+                                            fontSize = 10.sp
+                                        )
+                                    }
 
-                                    TextButton(
-                                        onClick = { viewModel.cancelScan() }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (uiState.progress.rowsInserted > 0) {
+                                            TextButton(
+                                                onClick = onNavigateToFeed
+                                            ) {
+                                                Text("Watch Now", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        TextButton(
+                                            onClick = { viewModel.cancelScan() }
+                                        ) {
+                                            Text("Stop", color = CoralPink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    is ScrapeUiState.Stopped -> {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = CinemaSurface),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "Stopped",
+                                        tint = NeonCyan,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "Scan Stopped",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        )
+                                        Text(
+                                            text = uiState.message,
+                                            color = Color.LightGray,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+
+                                if (uiState.itemsKept > 0) {
+                                    Button(
+                                        onClick = onNavigateToFeed,
+                                        colors = ButtonDefaults.buttonColors(containerColor = VividViolet, contentColor = Color.White),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("Cancel", color = CoralPink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Watch ${uiState.itemsKept} Items in Reels Feed",
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }
@@ -440,7 +519,7 @@ fun ScraperScreen(
                                             fontSize = 15.sp
                                         )
                                         Text(
-                                            text = "Indexed ${uiState.itemsFound} unique media items into Room database.",
+                                            text = uiState.summaryMessage,
                                             color = Color.LightGray,
                                             fontSize = 12.sp
                                         )
@@ -474,36 +553,51 @@ fun ScraperScreen(
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.ErrorOutline,
-                                    contentDescription = "Error",
-                                    tint = CoralPink,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Scrape Notice",
-                                        color = CoralPink,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = uiState.message,
-                                        color = Color.LightGray,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                IconButton(onClick = { viewModel.resetState() }) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Dismiss",
-                                        tint = Color.Gray
+                                        imageVector = Icons.Default.ErrorOutline,
+                                        contentDescription = "Error",
+                                        tint = CoralPink,
+                                        modifier = Modifier.size(26.dp)
                                     )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Scrape Notice",
+                                            color = CoralPink,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = uiState.message,
+                                            color = Color.LightGray,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    IconButton(onClick = { viewModel.resetState() }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Dismiss",
+                                            tint = Color.Gray
+                                        )
+                                    }
+                                }
+
+                                if (uiState.itemsKept > 0) {
+                                    Button(
+                                        onClick = onNavigateToFeed,
+                                        colors = ButtonDefaults.buttonColors(containerColor = VividViolet, contentColor = Color.White),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Watch ${uiState.itemsKept} Discovered Items")
+                                    }
                                 }
                             }
                         }

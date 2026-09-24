@@ -17,7 +17,11 @@ enum class MediaType {
         Index(value = ["normalizedName", "sourceDomain"], unique = true),
         Index(value = ["sourceDomain"]),
         Index(value = ["mediaType"]),
-        Index(value = ["discoveredTimestamp"])
+        Index(value = ["discoveredTimestamp"]),
+        Index(value = ["isDynamic"]),
+        Index(value = ["isBroken"]),
+        Index(value = ["isFavorite"]),
+        Index(value = ["lastPlayedTimestamp"])
     ]
 )
 data class ScrapedMedia(
@@ -36,9 +40,24 @@ data class ScrapedMedia(
     val height: Int? = null,
     val extractorType: String = "HTML",
     val discoveredTimestamp: Long = System.currentTimeMillis(),
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val isDynamic: Boolean = false,
+    val streamSessionId: Long? = null,
+    val playbackHeadersJson: String? = null,
+    val isBroken: Boolean = false,
+    val playCount: Int = 0,
+    val lastPositionMs: Long = 0L,
+    val lastPlayedTimestamp: Long? = null,
+
+    // Advanced streaming & media intelligence additions
+    val hdrType: String? = null, // SDR, HDR10, HLG
+    val frameRate: Float? = null, // e.g. 30f, 60f
+    val averageBitrate: Long? = null,
+    val pHash: String? = null,
+    val smartReframeEnabled: Boolean = false,
+    val ambientPaletteUri: String? = null,
+    val manifestTrackInfoJson: String? = null
 ) {
-    // Aliases matching prompt specifications
     val mediaUrl: String get() = url
     val pageUrl: String get() = sourcePageUrl
     val posterUrl: String? get() = thumbnailUrl
@@ -53,9 +72,12 @@ data class ScrapedMedia(
 
     val typeBadge: String
         get() = when (mediaType) {
-            MediaType.HLS -> "HLS / M3U8"
+            MediaType.HLS -> "HLS"
             MediaType.DASH -> "DASH"
             MediaType.GIF -> "GIF"
             MediaType.VIDEO -> if (fileExtension.isNotBlank()) fileExtension.uppercase() else "MP4"
         }
+
+    val isHfr: Boolean get() = (frameRate ?: 0f) >= 55f
+    val isHdr: Boolean get() = hdrType != null && hdrType != "SDR"
 }

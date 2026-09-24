@@ -1,15 +1,20 @@
 package com.example.reelscraper.data.repository
 
+import com.example.reelscraper.data.local.CrawlJobDao
 import com.example.reelscraper.data.local.MediaDao
+import com.example.reelscraper.data.model.CrawlJobStatus
 import com.example.reelscraper.data.model.MediaType
 import com.example.reelscraper.data.model.ScrapedMedia
-import com.example.reelscraper.data.scraper.ScrapeProgress
+import com.example.reelscraper.data.scraper.CrawlProgressState
+import com.example.reelscraper.data.scraper.MediaPersister
 import com.example.reelscraper.data.scraper.WebScraperEngine
 import com.example.reelscraper.data.settings.AppSettings
 import com.example.reelscraper.data.util.MediaNormalizer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,38 +23,58 @@ interface MediaRepository {
     val allMedia: Flow<List<ScrapedMedia>>
     val mediaCount: Flow<Int>
     val distinctSourceDomains: Flow<List<String>>
+    val crawlProgress: StateFlow<CrawlProgressState>
 
     fun getFilteredMedia(keyword: String?, selectedDomains: Set<String>): Flow<List<ScrapedMedia>>
+    fun getFilteredMediaAdvanced(
+        keyword: String?,
+        selectedDomains: Set<String>,
+        selectedFormat: String?,
+        onlyFavorites: Boolean,
+        onlyDynamic: Boolean,
+        hideBroken: Boolean
+    ): Flow<List<ScrapedMedia>>
+
     fun searchMedia(query: String, filterType: MediaType?): Flow<List<ScrapedMedia>>
     fun getFavorites(): Flow<List<ScrapedMedia>>
+    fun getDynamicStreams(): Flow<List<ScrapedMedia>>
+    fun getBrokenMedia(): Flow<List<ScrapedMedia>>
     fun getMediaById(id: Long): Flow<ScrapedMedia?>
+    suspend fun getMediaByIdDirect(id: Long): ScrapedMedia?
 
     suspend fun scrapeAndIndex(
         url: String,
         depth: Int = 2,
         settings: AppSettings,
-        onProgress: (ScrapeProgress) -> Unit = {}
-    ): Result<List<ScrapedMedia>>
+        onProgress: (CrawlProgressState) -> Unit = {}
+    ): Result<CrawlProgressState>
 
     suspend fun insertMedia(media: ScrapedMedia): Long
     suspend fun toggleFavorite(mediaId: Long, isFavorite: Boolean)
+    suspend fun markBroken(mediaId: Long, isBroken: Boolean)
+    suspend fun recordPlayback(mediaId: Long, positionMs: Long)
     suspend fun deleteMedia(mediaId: Long)
     suspend fun clearAll()
     suspend fun clearDuplicates(): Int
+    suspend fun clearBrokenMedia(): Int
     suspend fun exportJson(): String
     suspend fun importJson(json: String): Int
     suspend fun seedStarterSamplesIfEmpty()
+    suspend fun cleanupOrphanJobs(): Int
 }
 
 class MediaRepositoryImpl(
     private val mediaDao: MediaDao,
+    private val crawlJobDao: CrawlJobDao,
     private val scraperEngine: WebScraperEngine,
+    private val mediaPersister: MediaPersister = MediaPersister(mediaDao, crawlJobDao),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : MediaRepository {
 
     override val allMedia: Flow<List<ScrapedMedia>> = mediaDao.getAllMedia()
     override val mediaCount: Flow<Int> = mediaDao.getCount()
     override val distinctSourceDomains: Flow<List<String>> = mediaDao.getDistinctSourceDomains()
+    override val crawlProgress: StateFlow<CrawlProgressState> = mediaPersister.progress
 
     override fun getFilteredMedia(keyword: String?, selectedDomains: Set<String>): Flow<List<ScrapedMedia>> {
         val cleanKeyword = keyword?.trim()?.ifBlank { null }
@@ -58,6 +83,39 @@ class MediaRepositoryImpl(
             keyword = cleanKeyword,
             filterDomains = filterDomains,
             domains = selectedDomains.toList()
+        )
+    }
+
+    override fun getFilteredMediaAdvanced(
+        keyword: String?,
+        selectedDomains: Set<String>,
+        selectedFormat: String?,
+        onlyFavorites: Boolean,
+        onlyDynamic: Boolean,
+        hideBroken: Boolean
+    ): Flow<List<ScrapedMedia>> {
+        val cleanKeyword = keyword?.trim()?.ifBlank { null }
+        val filterDomains = if (selectedDomains.isEmpty()) 0 else 1
+        val format = selectedFormat?.lowercase() ?: ""
+        val filterFormat = if (format.isNotBlank() && format != "all") 1 else 0
+        val mediaTypeStr = when (format) {
+            "hls", "m3u8" -> MediaType.HLS.name
+            "dash", "mpd" -> MediaType.DASH.name
+            "gif" -> MediaType.GIF.name
+            "mp4", "webm" -> MediaType.VIDEO.name
+            else -> ""
+        }
+
+        return mediaDao.getFilteredMediaAdvanced(
+            keyword = cleanKeyword,
+            filterDomains = filterDomains,
+            domains = selectedDomains.toList(),
+            filterFormat = filterFormat,
+            format = format,
+            mediaTypeStr = mediaTypeStr,
+            onlyFavorites = if (onlyFavorites) 1 else 0,
+            onlyDynamic = if (onlyDynamic) 1 else 0,
+            hideBroken = if (hideBroken) 1 else 0
         )
     }
 
@@ -79,58 +137,34 @@ class MediaRepositoryImpl(
     }
 
     override fun getFavorites(): Flow<List<ScrapedMedia>> = mediaDao.getFavorites()
+    override fun getDynamicStreams(): Flow<List<ScrapedMedia>> = mediaDao.getDynamicStreams()
+    override fun getBrokenMedia(): Flow<List<ScrapedMedia>> = mediaDao.getBrokenMedia()
 
     override fun getMediaById(id: Long): Flow<ScrapedMedia?> = mediaDao.getMediaById(id)
+    override suspend fun getMediaByIdDirect(id: Long): ScrapedMedia? = mediaDao.getMediaByIdDirect(id)
 
     override suspend fun scrapeAndIndex(
         url: String,
         depth: Int,
         settings: AppSettings,
-        onProgress: (ScrapeProgress) -> Unit
-    ): Result<List<ScrapedMedia>> = withContext(ioDispatcher) {
+        onProgress: (CrawlProgressState) -> Unit
+    ): Result<CrawlProgressState> = withContext(ioDispatcher) {
         try {
-            val results = scraperEngine.crawlAndExtract(
+            val finalState = scraperEngine.crawlAndExtract(
                 initialUrl = url,
                 maxLevel = depth,
                 settings = settings,
-                onProgress = onProgress
+                persister = mediaPersister
             )
-
-            // Deduplicate against database:
-            // "If a matching item already exists in the database, skip the new item.
-            // Keep the existing database entry. Do not insert a duplicate."
-            val insertedList = mutableListOf<ScrapedMedia>()
-            for (item in results) {
-                val exists = mediaDao.existsByNormalizedNameAndDomain(item.normalizedName, item.sourceDomain) > 0
-                if (!exists) {
-                    val id = mediaDao.insertMedia(item)
-                    if (id > 0) {
-                        insertedList.add(item.copy(id = id))
-                    }
-                }
-            }
-
-            onProgress(
-                ScrapeProgress(
-                    statusMessage = "Crawl finished! Added ${insertedList.size} new items (${results.size - insertedList.size} duplicates skipped)",
-                    currentUrl = url,
-                    itemsFound = insertedList.size,
-                    currentLevel = depth,
-                    maxLevel = depth
-                )
-            )
-
-            Result.success(insertedList)
+            onProgress(finalState)
+            Result.success(finalState)
+        } catch (e: CancellationException) {
+            val finalState = mediaPersister.progress.value
+            onProgress(finalState)
+            Result.success(finalState)
         } catch (e: Exception) {
-            onProgress(
-                ScrapeProgress(
-                    statusMessage = "Crawl failed: ${e.localizedMessage ?: "Unknown error"}",
-                    currentUrl = url,
-                    itemsFound = 0,
-                    currentLevel = 1,
-                    maxLevel = depth
-                )
-            )
+            val finalState = mediaPersister.progress.value
+            onProgress(finalState)
             Result.failure(e)
         }
     }
@@ -143,6 +177,14 @@ class MediaRepositoryImpl(
         mediaDao.updateFavoriteStatus(mediaId, isFavorite)
     }
 
+    override suspend fun markBroken(mediaId: Long, isBroken: Boolean) = withContext(ioDispatcher) {
+        mediaDao.updateBrokenStatus(mediaId, isBroken)
+    }
+
+    override suspend fun recordPlayback(mediaId: Long, positionMs: Long) = withContext(ioDispatcher) {
+        mediaDao.recordPlaybackState(mediaId, positionMs)
+    }
+
     override suspend fun deleteMedia(mediaId: Long) = withContext(ioDispatcher) {
         mediaDao.deleteById(mediaId)
     }
@@ -153,6 +195,14 @@ class MediaRepositoryImpl(
 
     override suspend fun clearDuplicates(): Int = withContext(ioDispatcher) {
         mediaDao.clearDuplicates()
+    }
+
+    override suspend fun clearBrokenMedia(): Int = withContext(ioDispatcher) {
+        mediaDao.clearBrokenMedia()
+    }
+
+    override suspend fun cleanupOrphanJobs(): Int = withContext(ioDispatcher) {
+        crawlJobDao.markOrphanRunningJobsCancelled()
     }
 
     override suspend fun exportJson(): String = withContext(ioDispatcher) {
@@ -169,6 +219,7 @@ class MediaRepositoryImpl(
             obj.put("normalizedName", item.normalizedName)
             obj.put("fileExtension", item.fileExtension)
             obj.put("discoveredTimestamp", item.discoveredTimestamp)
+            obj.put("isDynamic", item.isDynamic)
             array.put(obj)
         }
         array.toString(2)
@@ -189,6 +240,7 @@ class MediaRepositoryImpl(
                 val sourceDomain = obj.optString("sourceDomain", MediaNormalizer.normalizeDomain(sourcePageUrl))
                 val normalizedName = obj.optString("normalizedName", MediaNormalizer.normalizeMediaName(url))
                 val fileExt = obj.optString("fileExtension", MediaNormalizer.extractExtension(url))
+                val isDynamic = obj.optBoolean("isDynamic", false)
 
                 val media = ScrapedMedia(
                     url = url,
@@ -198,7 +250,8 @@ class MediaRepositoryImpl(
                     sourcePageUrl = sourcePageUrl,
                     sourceDomain = sourceDomain,
                     normalizedName = normalizedName,
-                    fileExtension = fileExt
+                    fileExtension = fileExt,
+                    isDynamic = isDynamic
                 )
                 val res = mediaDao.insertMedia(media)
                 if (res > 0) count++
@@ -210,47 +263,71 @@ class MediaRepositoryImpl(
     }
 
     override suspend fun seedStarterSamplesIfEmpty() = withContext(ioDispatcher) {
+        mediaDao.removeInvalidGoogleStorageSamples()
+
         val existing = mediaDao.getAllExistingUrls()
         if (existing.isEmpty()) {
             val starterItems = listOf(
                 ScrapedMedia(
-                    url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-                    title = "Big Buck Bunny - Open Source Film",
+                    url = "https://media.w3.org/2010/05/sintel/trailer.mp4",
+                    title = "Sintel - Open Source CGI Film Trailer",
                     mediaType = MediaType.VIDEO,
-                    thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
-                    sourcePageUrl = "https://peach.blender.org/",
-                    sourceDomain = "peach.blender.org",
-                    normalizedName = "bigbuckbunny",
+                    thumbnailUrl = "https://media.w3.org/2010/05/sintel/poster.png",
+                    sourcePageUrl = "https://durian.blender.org/",
+                    sourceDomain = "durian.blender.org",
+                    normalizedName = "sintel-trailer",
                     fileExtension = "mp4"
                 ),
                 ScrapedMedia(
-                    url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-                    title = "Elephants Dream - 3D Animated Short",
+                    url = "https://media.w3.org/2010/05/bunny/trailer.mp4",
+                    title = "Big Buck Bunny - Open Source Animation",
                     mediaType = MediaType.VIDEO,
-                    thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg",
-                    sourcePageUrl = "https://orange.blender.org/",
-                    sourceDomain = "orange.blender.org",
-                    normalizedName = "elephantsdream",
+                    thumbnailUrl = "https://media.w3.org/2010/05/bunny/poster.png",
+                    sourcePageUrl = "https://peach.blender.org/",
+                    sourceDomain = "peach.blender.org",
+                    normalizedName = "big-buck-bunny-trailer",
+                    fileExtension = "mp4"
+                ),
+                ScrapedMedia(
+                    url = "https://vjs.zencdn.net/v/oceans.mp4",
+                    title = "Oceans - Marine Life Documentary",
+                    mediaType = MediaType.VIDEO,
+                    thumbnailUrl = "https://vjs.zencdn.net/v/oceans.png",
+                    sourcePageUrl = "https://videojs.com",
+                    sourceDomain = "videojs.com",
+                    normalizedName = "oceans-marine-life",
                     fileExtension = "mp4"
                 ),
                 ScrapedMedia(
                     url = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
                     title = "Big Buck Bunny Multi-Rate HLS Stream",
                     mediaType = MediaType.HLS,
-                    thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
+                    thumbnailUrl = "https://media.w3.org/2010/05/bunny/poster.png",
                     sourcePageUrl = "https://mux.com/test-streams",
                     sourceDomain = "mux.com",
-                    normalizedName = "x36xhzz",
-                    fileExtension = "m3u8"
+                    normalizedName = "x36xhzz-hls",
+                    fileExtension = "m3u8",
+                    isDynamic = true
                 ),
                 ScrapedMedia(
-                    url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-                    title = "Chromecast - For Bigger Blazes",
+                    url = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
+                    title = "Big Buck Bunny Adaptive 30fps DASH Stream",
+                    mediaType = MediaType.DASH,
+                    thumbnailUrl = "https://media.w3.org/2010/05/bunny/poster.png",
+                    sourcePageUrl = "https://dashif.org",
+                    sourceDomain = "dashif.org",
+                    normalizedName = "bbb-30fps-dash",
+                    fileExtension = "mpd",
+                    isDynamic = true
+                ),
+                ScrapedMedia(
+                    url = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+                    title = "Macro Blooming Flower - MDN CC0",
                     mediaType = MediaType.VIDEO,
-                    thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg",
-                    sourcePageUrl = "https://google.com/chromecast",
-                    sourceDomain = "google.com",
-                    normalizedName = "forbiggerblazes",
+                    thumbnailUrl = "https://media.w3.org/2010/05/bunny/poster.png",
+                    sourcePageUrl = "https://developer.mozilla.org",
+                    sourceDomain = "developer.mozilla.org",
+                    normalizedName = "mdn-blooming-flower",
                     fileExtension = "mp4"
                 ),
                 ScrapedMedia(
@@ -262,16 +339,6 @@ class MediaRepositoryImpl(
                     sourceDomain = "giphy.com",
                     normalizedName = "retro-cyber-wave",
                     fileExtension = "gif"
-                ),
-                ScrapedMedia(
-                    url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-                    title = "Tears of Steel - Sci-Fi VFX Showcase",
-                    mediaType = MediaType.VIDEO,
-                    thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg",
-                    sourcePageUrl = "https://mango.blender.org/",
-                    sourceDomain = "mango.blender.org",
-                    normalizedName = "tearsofsteel",
-                    fileExtension = "mp4"
                 )
             )
             mediaDao.insertMediaList(starterItems)

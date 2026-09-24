@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FilterListOff
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Badge
@@ -30,12 +30,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +53,6 @@ import com.example.reelscraper.ui.components.FilterBottomSheet
 import com.example.reelscraper.ui.components.ReelOverlayControls
 import com.example.reelscraper.ui.viewmodel.FeedViewModel
 import com.example.ui.theme.CinemaBlack
-import com.example.ui.theme.CinemaSurface
 import com.example.ui.theme.CoralPink
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.VividViolet
@@ -61,14 +62,30 @@ import com.example.ui.theme.VividViolet
 fun ReelsFeedScreen(
     viewModel: FeedViewModel,
     onNavigateToScraper: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isInPipMode: Boolean = false,
+    onRequestPip: () -> Unit = {}
 ) {
     val mediaList by viewModel.mediaList.collectAsStateWithLifecycle()
     val feedState by viewModel.feedState.collectAsStateWithLifecycle()
+    val settings by viewModel.appSettings.collectAsStateWithLifecycle()
     val keyword by viewModel.keyword.collectAsStateWithLifecycle()
     val selectedDomains by viewModel.selectedDomains.collectAsStateWithLifecycle()
+    val selectedFormat by viewModel.selectedFormat.collectAsStateWithLifecycle()
+    val onlyFavorites by viewModel.onlyFavorites.collectAsStateWithLifecycle()
+    val onlyDynamic by viewModel.onlyDynamic.collectAsStateWithLifecycle()
+    val hideBroken by viewModel.hideBroken.collectAsStateWithLifecycle()
     val availableDomains by viewModel.availableDomains.collectAsStateWithLifecycle()
     val hasActiveFilters by viewModel.hasActiveFilters.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(feedState.statusMessage) {
+        feedState.statusMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearStatusMessage()
+        }
+    }
 
     if (feedState.isFilterSheetVisible) {
         FilterBottomSheet(
@@ -78,6 +95,14 @@ fun ReelsFeedScreen(
             selectedDomains = selectedDomains,
             onToggleDomain = { viewModel.toggleDomainSelection(it) },
             onSelectAllDomains = { viewModel.selectAllDomains() },
+            selectedFormat = selectedFormat,
+            onFormatSelected = { viewModel.setFormat(it) },
+            onlyFavorites = onlyFavorites,
+            onToggleFavorites = { viewModel.toggleFavoritesFilter() },
+            onlyDynamic = onlyDynamic,
+            onToggleDynamic = { viewModel.toggleDynamicFilter() },
+            hideBroken = hideBroken,
+            onToggleHideBroken = { viewModel.toggleHideBroken() },
             onClearFilters = { viewModel.clearAllFilters() },
             matchCount = mediaList.size,
             onDismiss = { viewModel.closeFilterSheet() }
@@ -124,9 +149,9 @@ fun ReelsFeedScreen(
 
                 Text(
                     text = if (hasActiveFilters)
-                        "No videos or streams matched your active keyword ('$keyword') or selected domain filter."
+                        "No videos or streams matched your active keyword or filters."
                     else
-                        "Scan any webpage URL to extract and play video streams, HLS feeds, and GIFs in full-screen reels.",
+                        "Scan any webpage URL or use Sniffer mode to capture and play video streams, HLS feeds, and GIFs in full-screen reels.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.LightGray,
                     textAlign = TextAlign.Center
@@ -180,7 +205,7 @@ fun ReelsFeedScreen(
     ) {
         VerticalPager(
             state = pagerState,
-            beyondViewportPageCount = 1,
+            beyondViewportPageCount = 0,
             key = { index -> mediaList[index].url },
             modifier = Modifier.fillMaxSize()
         ) { page ->
@@ -193,80 +218,139 @@ fun ReelsFeedScreen(
                     isActive = isActive,
                     isPlaying = feedState.isPlaying,
                     isMuted = feedState.isMuted,
+                    settings = settings,
+                    aspectRatio = feedState.aspectRatio,
+                    playbackSpeed = feedState.playbackSpeed,
+                    trickPlayManager = viewModel.trickPlayManager,
+                    heatmapTracker = viewModel.heatmapTracker,
+                    chapters = feedState.activeChapters,
+                    subtitles = feedState.activeSubtitles,
                     onProgressUpdate = { pos, dur, buffering ->
                         if (isActive) {
                             viewModel.updateProgress(pos, dur, buffering)
                         }
                     },
+                    onStreamAutoRefreshNeeded = {
+                        viewModel.refreshStream(mediaItem)
+                    },
+                    onAddChapter = { title, posMs ->
+                        viewModel.addManualChapter(title, posMs)
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
 
-                ReelOverlayControls(
-                    media = mediaItem,
-                    isPlaying = feedState.isPlaying,
-                    isMuted = feedState.isMuted,
-                    currentPositionMs = feedState.currentPositionMs,
-                    totalDurationMs = feedState.totalDurationMs,
-                    onTogglePlayPause = { viewModel.togglePlayPause() },
-                    onToggleMute = { viewModel.toggleMute() },
-                    onToggleFavorite = { viewModel.toggleFavorite(mediaItem) },
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (!isInPipMode) {
+                    ReelOverlayControls(
+                        media = mediaItem,
+                        isPlaying = feedState.isPlaying,
+                        isMuted = feedState.isMuted,
+                        currentPositionMs = feedState.currentPositionMs,
+                        totalDurationMs = feedState.totalDurationMs,
+                        aspectRatioName = feedState.aspectRatio.name,
+                        playbackSpeedText = "${feedState.playbackSpeed}x",
+                        onTogglePlayPause = { viewModel.togglePlayPause() },
+                        onToggleMute = { viewModel.toggleMute() },
+                        onToggleFavorite = { viewModel.toggleFavorite(mediaItem) },
+                        onCycleAspectRatio = { viewModel.cycleAspectRatio() },
+                        onCycleSpeed = { viewModel.cycleSpeed() },
+                        onRefreshStream = { viewModel.refreshStream(mediaItem) },
+                        onToggleBroken = { viewModel.toggleBroken(mediaItem) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
-        // Top Status Bar: Pill badge & Filter Action Button
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .align(Alignment.TopCenter),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.55f),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Text(
-                    text = "ReelScraper  •  ${pagerState.currentPage + 1}/${mediaList.size}",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
+        if (!isInPipMode) {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 50.dp)
+            )
 
-            // Filter button with badge if active filters exist
-            Surface(
-                color = if (hasActiveFilters) VividViolet.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.55f),
-                shape = CircleShape,
-                modifier = Modifier.size(40.dp)
+            // Top Status Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = { viewModel.openFilterSheet() },
-                    modifier = Modifier.testTag("feed_filter_button")
+                Surface(
+                    color = Color.Black.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(20.dp)
                 ) {
-                    BadgedBox(
-                        badge = {
-                            if (hasActiveFilters) {
-                                Badge(
-                                    containerColor = NeonCyan,
-                                    contentColor = CinemaBlack
-                                ) {
-                                    val filterCount = (if (keyword.isNotBlank()) 1 else 0) + selectedDomains.size
-                                    Text(text = filterCount.toString())
+                    Text(
+                        text = "ReelScraper  •  ${pagerState.currentPage + 1}/${mediaList.size}",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Seamless PiP Button
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.55f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        IconButton(
+                            onClick = onRequestPip,
+                            modifier = Modifier.testTag("feed_pip_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PictureInPictureAlt,
+                                contentDescription = "Enter Picture in Picture",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // Filter Button
+                    Surface(
+                        color = if (hasActiveFilters) VividViolet.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.55f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.openFilterSheet() },
+                            modifier = Modifier.testTag("feed_filter_button")
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    if (hasActiveFilters) {
+                                        Badge(
+                                            containerColor = NeonCyan,
+                                            contentColor = CinemaBlack
+                                        ) {
+                                            val filterCount = (if (keyword.isNotBlank()) 1 else 0) +
+                                                    selectedDomains.size +
+                                                    (if (selectedFormat != "all") 1 else 0) +
+                                                    (if (onlyFavorites) 1 else 0) +
+                                                    (if (onlyDynamic) 1 else 0)
+                                            Text(text = filterCount.toString())
+                                        }
+                                    }
                                 }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FilterList,
+                                    contentDescription = "Filter playback feed",
+                                    tint = if (hasActiveFilters) NeonCyan else Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FilterList,
-                            contentDescription = "Filter playback feed",
-                            tint = if (hasActiveFilters) NeonCyan else Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
                     }
                 }
             }

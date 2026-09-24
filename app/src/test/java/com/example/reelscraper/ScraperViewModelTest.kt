@@ -67,6 +67,22 @@ class FakeMediaRepository : MediaRepository {
     override suspend fun exportJson(): String = "[]"
     override suspend fun importJson(json: String): Int = 0
     override suspend fun seedStarterSamplesIfEmpty() {}
+
+    override fun getFilteredMediaAdvanced(
+        keyword: String?,
+        selectedDomains: Set<String>,
+        selectedFormat: String?,
+        onlyFavorites: Boolean,
+        onlyDynamic: Boolean,
+        hideBroken: Boolean
+    ): Flow<List<ScrapedMedia>> = mediaListFlow
+
+    override fun getDynamicStreams(): Flow<List<ScrapedMedia>> = mediaListFlow
+    override fun getBrokenMedia(): Flow<List<ScrapedMedia>> = mediaListFlow
+    override suspend fun getMediaByIdDirect(id: Long): ScrapedMedia? = null
+    override suspend fun markBroken(mediaId: Long, isBroken: Boolean) {}
+    override suspend fun recordPlayback(mediaId: Long, positionMs: Long) {}
+    override suspend fun clearBrokenMedia(): Int = 0
 }
 
 @RunWith(RobolectricTestRunner::class)

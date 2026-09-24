@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,19 +19,29 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Stream
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,6 +54,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
@@ -55,7 +67,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,12 +82,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.reelscraper.data.settings.AppSettings
+import com.example.reelscraper.player.WebVttCue
+import com.example.reelscraper.ui.components.SubtitleOverlay
 import com.example.reelscraper.ui.viewmodel.SettingsViewModel
 import com.example.ui.theme.CinemaBlack
 import com.example.ui.theme.CinemaSurface
 import com.example.ui.theme.CinemaSurfaceVariant
 import com.example.ui.theme.CoralPink
-import com.example.ui.theme.EmeraldGreen
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.VividViolet
 import kotlinx.coroutines.flow.collectLatest
@@ -84,6 +98,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    onNavigateToProfiles: () -> Unit = {},
+    onNavigateToDuplicates: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -106,22 +122,29 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showClearConfirmDialog = false },
             containerColor = CinemaSurface,
-            title = { Text("Clear All Scraped Media?", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = { Text("This will permanently remove all indexed videos, streams, and favorites from local database.", color = Color.LightGray) },
+            title = {
+                Text("Clear All Media?", color = Color.White, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    "This will delete all scanned and captured streams from the local database. This action cannot be undone.",
+                    color = Color.LightGray
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = {
                         viewModel.clearAllMedia()
                         showClearConfirmDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CoralPink, contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(containerColor = CoralPink)
                 ) {
-                    Text("Clear All")
+                    Text("Delete Everything", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirmDialog = false }) {
-                    Text("Cancel", color = Color.LightGray)
+                    Text("Cancel", color = NeonCyan)
                 }
             }
         )
@@ -131,23 +154,18 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showExportDialog = null },
             containerColor = CinemaSurface,
-            title = { Text("Exported JSON Database", color = Color.White, fontWeight = FontWeight.Bold) },
+            title = { Text("Export Library JSON", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("JSON payload ready. You can copy it to clipboard:", color = Color.LightGray, fontSize = 12.sp)
+                    Text("Copy your exported media items:", color = Color.LightGray, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Surface(
-                        color = CinemaBlack,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().height(150.dp)
-                    ) {
-                        Text(
-                            text = showExportDialog ?: "",
-                            color = NeonCyan,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(8.dp).verticalScroll(rememberScrollState())
-                        )
-                    }
+                    OutlinedTextField(
+                        value = showExportDialog ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        maxLines = 6,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             },
             confirmButton = {
@@ -157,18 +175,16 @@ fun SettingsScreen(
                         val clip = android.content.ClipData.newPlainText("ReelScraper JSON", showExportDialog)
                         clipboard.setPrimaryClip(clip)
                         showExportDialog = null
-                        scope.launch { snackbarHostState.showSnackbar("JSON copied to clipboard!") }
+                        scope.launch { snackbarHostState.showSnackbar("Copied JSON to clipboard") }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = CinemaBlack)
                 ) {
-                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
                     Text("Copy to Clipboard")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showExportDialog = null }) {
-                    Text("Close", color = Color.LightGray)
+                    Text("Close", color = Color.White)
                 }
             }
         )
@@ -178,15 +194,17 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
             containerColor = CinemaSurface,
-            title = { Text("Import Database from JSON", color = Color.White, fontWeight = FontWeight.Bold) },
+            title = { Text("Import Library JSON", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Paste JSON array of media items below:", color = Color.LightGray, fontSize = 12.sp)
+                Column {
+                    Text("Paste JSON containing exported media items:", color = Color.LightGray, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = importJsonText,
                         onValueChange = { importJsonText = it },
-                        placeholder = { Text("[{\"url\": \"...\", \"title\": \"...\"}]", color = Color.Gray, fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().height(150.dp)
+                        placeholder = { Text("Paste JSON here...") },
+                        maxLines = 6,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
@@ -206,321 +224,456 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showImportDialog = false }) {
-                    Text("Cancel", color = Color.LightGray)
+                    Text("Cancel", color = Color.White)
                 }
             }
         )
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(CinemaBlack)
-            .statusBarsPadding()
-    ) {
-        SnackbarHost(hostState = snackbarHostState)
-
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = CinemaBlack,
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(innerPadding)
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Header
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = null,
-                    tint = NeonCyan,
-                    modifier = Modifier.size(28.dp)
+            Text(
+                text = "Settings & Engine",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 1. Advanced Playback Engine Section
+            SettingsSectionCard(title = "Advanced Playback Engine", icon = Icons.Default.Speed) {
+                // 60fps Converter
+                SettingsToggleRow(
+                    title = "60 FPS Video Converter",
+                    subtitle = "Align display cadence and video render pacing to 60fps for ultra-smooth reels",
+                    checked = settings.enable60FpsConverter,
+                    onCheckedChange = { viewModel.update60FpsConverter(it) }
                 )
-                Text(
-                    text = "Preferences & Settings",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Audio Normalization
+                SettingsToggleRow(
+                    title = "Audio Loudness Normalization",
+                    subtitle = "RMS loudness compression to prevent sudden loud jumps between scraped clips",
+                    checked = settings.audioNormalization,
+                    onCheckedChange = { viewModel.updateAudioNormalization(it, settings.normalizationStrength) }
                 )
-            }
 
-            // 1. Crawling Settings Card
-            SettingsSectionHeader(title = "Crawling & Discovery", icon = Icons.Default.Radar)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CinemaSurface),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    // Default Scan Level Slider
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Default Scan Levels", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("Level ${settings.defaultScanLevels}", color = NeonCyan, fontWeight = FontWeight.Bold)
-                        }
-                        Slider(
-                            value = settings.defaultScanLevels.toFloat(),
-                            onValueChange = { viewModel.updateScanLevels(it.toInt()) },
-                            valueRange = 1f..10f,
-                            steps = 8,
-                            colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("1 (Fast)", fontSize = 10.sp, color = Color.Gray)
-                            Text("10 (Deep Crawl)", fontSize = 10.sp, color = Color.Gray)
-                        }
-                    }
-
-                    // Format Toggles
-                    Text("Allowed Media Formats", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (settings.audioNormalization) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Normalization Strength:", color = Color.White, fontSize = 12.sp)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        FormatCheckbox("MP4", settings.extractMp4) {
-                            viewModel.updateFormatToggles(it, settings.extractWebm, settings.extractHls, settings.extractDash, settings.extractGif)
-                        }
-                        FormatCheckbox("WEBM", settings.extractWebm) {
-                            viewModel.updateFormatToggles(settings.extractMp4, it, settings.extractHls, settings.extractDash, settings.extractGif)
-                        }
-                        FormatCheckbox("HLS (m3u8)", settings.extractHls) {
-                            viewModel.updateFormatToggles(settings.extractMp4, settings.extractWebm, it, settings.extractDash, settings.extractGif)
-                        }
-                        FormatCheckbox("DASH (mpd)", settings.extractDash) {
-                            viewModel.updateFormatToggles(settings.extractMp4, settings.extractWebm, settings.extractHls, it, settings.extractGif)
-                        }
-                        FormatCheckbox("GIF", settings.extractGif) {
-                            viewModel.updateFormatToggles(settings.extractMp4, settings.extractWebm, settings.extractHls, settings.extractDash, it)
-                        }
-                    }
-
-                    // Max Concurrent Requests & Delay
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Max Concurrent Requests", color = Color.White, fontSize = 13.sp)
-                            Text("${settings.maxConcurrentRequests} workers (Limit 1-5)", color = Color.Gray, fontSize = 11.sp)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf(1, 3, 5).forEach { num ->
-                                FilterChip(
-                                    selected = settings.maxConcurrentRequests == num,
-                                    onClick = { viewModel.updateCrawlLimits(settings.maxLinksPerPage, num, settings.pageTimeoutSeconds, settings.requestDelayMs) },
-                                    label = { Text("$num") },
-                                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = VividViolet, selectedLabelColor = Color.White)
+                        listOf("LIGHT", "NORMAL", "STRONG").forEach { strength ->
+                            FilterChip(
+                                selected = settings.normalizationStrength.equals(strength, ignoreCase = true),
+                                onClick = { viewModel.updateAudioNormalization(true, strength) },
+                                label = { Text(strength.lowercase().replaceFirstChar { it.uppercase() }, fontSize = 11.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = NeonCyan,
+                                    selectedLabelColor = CinemaBlack,
+                                    labelColor = Color.LightGray
                                 )
-                            }
+                            )
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Ambient Mode
+                Text("Cinematic Ambient Mode:", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    listOf(
+                        "OFF" to "Off",
+                        "POSTER_ONLY" to "Poster",
+                        "DYNAMIC_LOW" to "Low Freq",
+                        "DYNAMIC_HIGH" to "High Freq"
+                    ).forEach { (mode, label) ->
+                        FilterChip(
+                            selected = settings.ambientMode == mode,
+                            onClick = { viewModel.updateAmbientMode(mode) },
+                            label = { Text(label, fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = VividViolet,
+                                selectedLabelColor = Color.White,
+                                labelColor = Color.LightGray
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Custom ABR & Data Saver
+                SettingsToggleRow(
+                    title = "Data Saver Mode",
+                    subtitle = "Restricts startup resolution to 480p and disables background prefetching",
+                    checked = settings.dataSaverMode,
+                    onCheckedChange = { viewModel.updateQualityAndDataSaver(settings.qualityPreference, it) }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // HUD Player Debug Overlay
+                SettingsToggleRow(
+                    title = "Player Diagnostics HUD",
+                    subtitle = "Overlay real-time resolution, bitrate, bandwidth, dropped frames, and rebuffer count",
+                    checked = settings.showPlayerDebugStats,
+                    onCheckedChange = {
+                        viewModel.updatePlaybackSettings(
+                            settings.autoplayNext, settings.muteByDefault, settings.preloadAdjacentCount,
+                            settings.pauseOnBackground, settings.resumePlayback, it
+                        )
+                    }
+                )
             }
 
-            // 2. Advanced Extraction Engines Card
-            SettingsSectionHeader(title = "Extraction Pipeline Engines", icon = Icons.Default.Tune)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CinemaSurface),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SettingToggleRow("HTML Media Tags (<video>, <source>, <a>)", settings.enableHtmlTag) {
-                        viewModel.updateAdvancedExtraction(it, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 2. On-Device Intelligence Section
+            SettingsSectionCard(title = "On-Device Intelligence", icon = Icons.Default.Psychology) {
+                // Smart Reframe
+                Text("Smart Reframe for Vertical Feed:", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Automatically pans landscape videos to focus on subject or motion center",
+                    color = Color.LightGray,
+                    fontSize = 11.sp
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    listOf(
+                        "OFF" to "Off",
+                        "CENTER_CROP" to "Center Crop",
+                        "MOTION_TRACKING" to "Motion Tracking",
+                        "SUBJECT_TRACKING" to "Subject ML"
+                    ).forEach { (mode, label) ->
+                        FilterChip(
+                            selected = settings.smartReframeMode == mode,
+                            onClick = { viewModel.updateSmartReframe(mode) },
+                            label = { Text(label, fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = NeonCyan,
+                                selectedLabelColor = CinemaBlack,
+                                labelColor = Color.LightGray
+                            )
+                        )
                     }
-                    SettingToggleRow("Meta & Open Graph Tags (og:video, twitter)", settings.enableMetaTags) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, it, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Auto Chapters
+                SettingsToggleRow(
+                    title = "Automatic Local Chapters",
+                    subtitle = "Detect scene boundaries and frame histogram differences to segment long videos",
+                    checked = settings.enableAutoChapters,
+                    onCheckedChange = {
+                        viewModel.updateChaptersAndTranscription(
+                            it, settings.enableLocalTranscription, settings.transcriptionLanguage, settings.transcriptionQuality
+                        )
                     }
-                    SettingToggleRow("JSON-LD & Structured Data (VideoObject)", settings.enableJsonLd) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, it, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Local Transcription
+                SettingsToggleRow(
+                    title = "Local Speech-to-Text Subtitles",
+                    subtitle = "Transcribe video audio into WebVTT cues on-device using Android speech recognizer",
+                    checked = settings.enableLocalTranscription,
+                    onCheckedChange = {
+                        viewModel.updateChaptersAndTranscription(
+                            settings.enableAutoChapters, it, settings.transcriptionLanguage, settings.transcriptionQuality
+                        )
                     }
-                    SettingToggleRow("Inline Script & Player Configs (JW, Video.js)", settings.enableInlineScript) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, it, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Perceptual Duplicate Detection Policy
+                Text("Visual Duplicate Detection (pHash):", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    listOf(
+                        "DISABLED" to "Off",
+                        "GIFS_ONLY" to "GIFs Only",
+                        "SHORT_VIDEOS" to "Short Videos",
+                        "ALL" to "All Media"
+                    ).forEach { (mode, label) ->
+                        FilterChip(
+                            selected = settings.pHashMode == mode,
+                            onClick = { viewModel.updatePhashMode(mode) },
+                            label = { Text(label, fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = VividViolet,
+                                selectedLabelColor = Color.White,
+                                labelColor = Color.LightGray
+                            )
+                        )
                     }
-                    SettingToggleRow("Regex URL & Protocol Scanning", settings.enableRegexScan) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, it, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
-                    }
-                    SettingToggleRow("Data Attributes (data-src, data-video)", settings.enableAttributeScan) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, it, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
-                    }
-                    SettingToggleRow("Iframe & Embed Player Discovery", settings.enableIframeScan) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, it, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
-                    }
-                    SettingToggleRow("RSS / Atom Feed & Sitemap Scanning", settings.enableFeedSitemapScan) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, it, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
-                    }
-                    SettingToggleRow("JSON API Endpoint Scanning", settings.enableJsonApiScan) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, it, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
-                    }
-                    SettingToggleRow("WebView Fallback (Dynamic JS Rendering)", settings.enableWebViewFallback) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, it, settings.webViewOnlyWhenNoMedia, settings.enableContentTypeSniffing)
-                    }
-                    SettingToggleRow("Content-Type Sniffing (HEAD/Range GET)", settings.enableContentTypeSniffing) {
-                        viewModel.updateAdvancedExtraction(settings.enableHtmlTag, settings.enableMetaTags, settings.enableJsonLd, settings.enableInlineScript, settings.enableRegexScan, settings.enableAttributeScan, settings.enableIframeScan, settings.enableFeedSitemapScan, settings.enableJsonApiScan, settings.enableWebViewFallback, settings.webViewOnlyWhenNoMedia, it)
-                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Open Duplicate Manager Button
+                Button(
+                    onClick = onNavigateToDuplicates,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = VividViolet.copy(alpha = 0.3f),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("open_duplicate_manager_button")
+                ) {
+                    Icon(Icons.Default.Difference, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open Visual Duplicate Manager", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
             }
 
-            // 3. Playback Preferences Card
-            SettingsSectionHeader(title = "Player & Feed Behavior", icon = Icons.Default.PlayCircle)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CinemaSurface),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SettingToggleRow("Autoplay Next Media on Scroll", settings.autoplayNext) {
-                        viewModel.updatePlaybackSettings(it, settings.muteByDefault, settings.preloadAdjacentCount, settings.pauseOnBackground)
-                    }
-                    SettingToggleRow("Mute Audio by Default", settings.muteByDefault) {
-                        viewModel.updatePlaybackSettings(settings.autoplayNext, it, settings.preloadAdjacentCount, settings.pauseOnBackground)
-                    }
-                    SettingToggleRow("Pause Playback on Background", settings.pauseOnBackground) {
-                        viewModel.updatePlaybackSettings(settings.autoplayNext, settings.muteByDefault, settings.preloadAdjacentCount, it)
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // 4. Data Management Card
-            SettingsSectionHeader(title = "Data & Database Tools", icon = Icons.Default.DeleteSweep)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CinemaSurface),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { viewModel.clearDuplicateMedia() },
-                        colors = ButtonDefaults.buttonColors(containerColor = VividViolet, contentColor = Color.White),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(imageVector = Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Deduplicate Database (Clear Duplicates)", fontWeight = FontWeight.Bold)
-                    }
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(
-                            onClick = { viewModel.exportDatabaseJson { json -> showExportDialog = json } },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(imageVector = Icons.Default.FileUpload, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export JSON", color = NeonCyan, fontSize = 12.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = { showImportDialog = true },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(imageVector = Icons.Default.FileDownload, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Import JSON", color = NeonCyan, fontSize = 12.sp)
-                        }
-                    }
-
-                    Button(
-                        onClick = { showClearConfirmDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = CoralPink.copy(alpha = 0.85f), contentColor = Color.White),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Clear All Indexed Media", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            // 5. About Section Card
-            SettingsSectionHeader(title = "About ReelScraper", icon = Icons.Default.Info)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CinemaSurface),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("ReelScraper Engine v1.0", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text(
-                        text = "Native high-performance media discovery pipeline and vertical player for MP4, WebM, HLS, DASH, and animated GIFs.",
-                        color = Color.LightGray,
-                        fontSize = 12.sp
+            // 3. Subtitle Styling & Live Preview Section
+            SettingsSectionCard(title = "Subtitle Styling & Preview", icon = Icons.Default.Subtitles) {
+                // Live preview box
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(90.dp)
+                        .background(Color.DarkGray.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SubtitleOverlay(
+                        currentCue = WebVttCue(
+                            startTimeMs = 0L,
+                            endTimeMs = 10000L,
+                            text = "Sample Subtitle: ReelScraper 60fps local player"
+                        ),
+                        settings = settings
                     )
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("Font Size: ${settings.subtitleFontSizeSp} sp", color = Color.White, fontSize = 12.sp)
+                Slider(
+                    value = settings.subtitleFontSizeSp.toFloat(),
+                    onValueChange = {
+                        viewModel.updateSubtitleStyling(
+                            it.toInt(), settings.subtitleTextColorHex, settings.subtitleBgColorHex, settings.subtitleVerticalOffsetDp
+                        )
+                    },
+                    valueRange = 12f..32f,
+                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text("Vertical Offset: ${settings.subtitleVerticalOffsetDp} dp", color = Color.White, fontSize = 12.sp)
+                Slider(
+                    value = settings.subtitleVerticalOffsetDp.toFloat(),
+                    onValueChange = {
+                        viewModel.updateSubtitleStyling(
+                            settings.subtitleFontSizeSp, settings.subtitleTextColorHex, settings.subtitleBgColorHex, it.toInt()
+                        )
+                    },
+                    valueRange = 0f..100f,
+                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 4. Feed & Predictive Preloading Section
+            SettingsSectionCard(title = "Feed & Preloading", icon = Icons.Default.PlayCircle) {
+                Text("Predictive Preload Distance: ${settings.preloadAdjacentCount} items", color = Color.White, fontSize = 12.sp)
+                Slider(
+                    value = settings.preloadAdjacentCount.toFloat(),
+                    onValueChange = {
+                        viewModel.updatePlaybackSettings(
+                            settings.autoplayNext, settings.muteByDefault, it.toInt(),
+                            settings.pauseOnBackground, settings.resumePlayback, settings.showPlayerDebugStats
+                        )
+                    },
+                    valueRange = 0f..3f,
+                    steps = 2,
+                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                )
+
+                SettingsToggleRow(
+                    title = "Collect Watch Heatmap",
+                    subtitle = "Tracks replay activity in 5-second buckets to render scrubber heatmaps",
+                    checked = settings.enableHeatmapCollection,
+                    onCheckedChange = {
+                        viewModel.updatePlaybackSettings(
+                            settings.autoplayNext, settings.muteByDefault, settings.preloadAdjacentCount,
+                            settings.pauseOnBackground, settings.resumePlayback, settings.showPlayerDebugStats
+                        )
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 5. Site Profiles & Database Section
+            SettingsSectionCard(title = "Profiles & Data Management", icon = Icons.Default.Layers) {
+                Button(
+                    onClick = onNavigateToProfiles,
+                    colors = ButtonDefaults.buttonColors(containerColor = VividViolet, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("manage_profiles_button")
+                ) {
+                    Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Manage Site Profiles & Regex Rules", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.exportDatabaseJson { showExportDialog = it } },
+                        modifier = Modifier.weight(1f).testTag("export_json_button")
+                    ) {
+                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp), tint = NeonCyan)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Export JSON", color = Color.White, fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = { showImportDialog = true },
+                        modifier = Modifier.weight(1f).testTag("import_json_button")
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = NeonCyan)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Import JSON", color = Color.White, fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.clearDuplicateMedia() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp), tint = NeonCyan)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Dedup URLs", color = Color.White, fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.clearBrokenMedia() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp), tint = CoralPink)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Clean Broken", color = Color.White, fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { showClearConfirmDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = CoralPink.copy(alpha = 0.2f), contentColor = CoralPink),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("clear_all_media_button")
+                ) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Clear All Indexed Media", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
 
 @Composable
-fun SettingsSectionHeader(title: String, icon: ImageVector) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 8.dp)
+private fun SettingsSectionCard(
+    title: String,
+    icon: ImageVector,
+    content: @Composable () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CinemaSurface),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
-        Text(text = title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(imageVector = icon, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            content()
+        }
     }
 }
 
 @Composable
-fun SettingToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SettingsToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            color = Color.LightGray,
-            fontSize = 12.sp,
-            modifier = Modifier.weight(1f).padding(end = 8.dp)
-        )
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(text = title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(text = subtitle, color = Color.Gray, fontSize = 11.sp)
+        }
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = NeonCyan,
-                checkedTrackColor = VividViolet,
+                checkedTrackColor = NeonCyan.copy(alpha = 0.5f),
                 uncheckedThumbColor = Color.LightGray,
                 uncheckedTrackColor = CinemaSurfaceVariant
             )
         )
     }
-}
-
-@Composable
-fun FormatCheckbox(label: String, selected: Boolean, onSelectedChange: (Boolean) -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = { onSelectedChange(!selected) },
-        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = NeonCyan,
-            selectedLabelColor = CinemaBlack,
-            labelColor = Color.LightGray
-        )
-    )
 }

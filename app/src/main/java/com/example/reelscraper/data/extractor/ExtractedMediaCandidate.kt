@@ -17,7 +17,12 @@ data class ExtractedMediaCandidate(
     val width: Int? = null,
     val height: Int? = null,
     val extractorType: String,
-    val priority: Int = 0 // Higher priority candidate preferred for title/poster
+    val priority: Int = 0, // Higher priority candidate preferred for title/poster
+    val trickPlayUrl: String? = null,
+    val subtitlesUrl: String? = null,
+    val chaptersJson: String? = null,
+    val hdrType: String? = null,
+    val frameRate: Float? = null
 )
 
 data class ExtractionContext(

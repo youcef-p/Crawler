@@ -6,7 +6,6 @@ import com.example.reelscraper.data.repository.MediaRepository
 import com.example.reelscraper.data.settings.AppSettings
 import com.example.reelscraper.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +27,100 @@ class SettingsViewModel(
 
     private val _message = MutableSharedFlow<String>()
     val message: SharedFlow<String> = _message.asSharedFlow()
+
+    fun updateAudioNormalization(enabled: Boolean, strength: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(audioNormalization = enabled, normalizationStrength = strength)
+            }
+        }
+    }
+
+    fun update60FpsConverter(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(enable60FpsConverter = enabled)
+            }
+        }
+    }
+
+    fun updateAmbientMode(mode: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(ambientMode = mode)
+            }
+        }
+    }
+
+    fun updateSmartReframe(mode: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(smartReframeMode = mode)
+            }
+        }
+    }
+
+    fun updateQualityAndDataSaver(quality: String, dataSaver: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(qualityPreference = quality, dataSaverMode = dataSaver)
+            }
+        }
+    }
+
+    fun updateChaptersAndTranscription(autoChapters: Boolean, localTranscription: Boolean, language: String, quality: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(
+                    enableAutoChapters = autoChapters,
+                    enableLocalTranscription = localTranscription,
+                    transcriptionLanguage = language,
+                    transcriptionQuality = quality
+                )
+            }
+        }
+    }
+
+    fun updatePhashMode(mode: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(pHashMode = mode)
+            }
+        }
+    }
+
+    fun updateSubtitleStyling(fontSize: Int, textColor: String, bgColor: String, verticalOffset: Int) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings {
+                it.copy(
+                    subtitleFontSizeSp = fontSize,
+                    subtitleTextColorHex = textColor,
+                    subtitleBgColorHex = bgColor,
+                    subtitleVerticalOffsetDp = verticalOffset
+                )
+            }
+        }
+    }
+
+    fun updatePlaybackSettings(
+        autoplayNext: Boolean,
+        muteByDefault: Boolean,
+        preloadCount: Int,
+        pauseOnBackground: Boolean,
+        resume: Boolean = true,
+        debugStats: Boolean = false
+    ) {
+        viewModelScope.launch {
+            settingsRepository.updatePlaybackSettings(
+                autoplayNext,
+                muteByDefault,
+                preloadCount,
+                pauseOnBackground,
+                resume,
+                debugStats
+            )
+        }
+    }
 
     fun updateScanLevels(levels: Int) {
         viewModelScope.launch {
@@ -61,15 +154,28 @@ class SettingsViewModel(
         }
     }
 
-    fun updatePlaybackSettings(autoplayNext: Boolean, muteByDefault: Boolean, preloadCount: Int, pauseOnBackground: Boolean) {
+    fun updateDynamicStreamSettings(
+        enableDynamicStreaming: Boolean,
+        enableLocalProxy: Boolean = false,
+        refreshExpiredStreams: Boolean = true
+    ) {
         viewModelScope.launch {
-            settingsRepository.updatePlaybackSettings(autoplayNext, muteByDefault, preloadCount, pauseOnBackground)
+            settingsRepository.updateDynamicStreamSettings(
+                enableDynamicStreaming,
+                enableLocalProxy,
+                refreshExpiredStreams
+            )
         }
     }
 
-    fun updateAppearance(themeMode: String, showBadges: Boolean, showDomainLabels: Boolean) {
+    fun updateAppearance(
+        themeMode: String,
+        showBadges: Boolean,
+        showDomainLabels: Boolean,
+        showDynamicBadges: Boolean = true
+    ) {
         viewModelScope.launch {
-            settingsRepository.updateAppearance(themeMode, showBadges, showDomainLabels)
+            settingsRepository.updateAppearance(themeMode, showBadges, showDomainLabels, showDynamicBadges)
         }
     }
 
@@ -87,18 +193,28 @@ class SettingsViewModel(
         }
     }
 
+    fun clearBrokenMedia() {
+        viewModelScope.launch {
+            val removed = mediaRepository.clearBrokenMedia()
+            _message.emit("Cleared $removed broken media entries")
+        }
+    }
+
     fun exportDatabaseJson(onExportReady: (String) -> Unit) {
         viewModelScope.launch {
             val json = mediaRepository.exportJson()
             onExportReady(json)
-            _message.emit("Database exported as JSON")
         }
     }
 
     fun importDatabaseJson(json: String) {
         viewModelScope.launch {
-            val count = mediaRepository.importJson(json)
-            _message.emit("Imported $count items into library")
+            try {
+                val count = mediaRepository.importJson(json)
+                _message.emit("Successfully imported $count media items")
+            } catch (e: Exception) {
+                _message.emit("Import failed: ${e.message}")
+            }
         }
     }
 }

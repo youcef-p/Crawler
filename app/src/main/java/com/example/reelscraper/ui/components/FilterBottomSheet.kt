@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,10 +20,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FilterListOff
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Stream
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +56,7 @@ import com.example.ui.theme.CinemaSurface
 import com.example.ui.theme.CinemaSurfaceVariant
 import com.example.ui.theme.CoralPink
 import com.example.ui.theme.NeonCyan
+import com.example.ui.theme.NeonPurple
 import com.example.ui.theme.VividViolet
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -65,6 +68,14 @@ fun FilterBottomSheet(
     selectedDomains: Set<String>,
     onToggleDomain: (String) -> Unit,
     onSelectAllDomains: () -> Unit,
+    selectedFormat: String? = "all",
+    onFormatSelected: (String) -> Unit = {},
+    onlyFavorites: Boolean = false,
+    onToggleFavorites: () -> Unit = {},
+    onlyDynamic: Boolean = false,
+    onToggleDynamic: () -> Unit = {},
+    hideBroken: Boolean = true,
+    onToggleHideBroken: () -> Unit = {},
     onClearFilters: () -> Unit,
     matchCount: Int,
     onDismiss: () -> Unit,
@@ -131,10 +142,10 @@ fun FilterBottomSheet(
                 }
             }
 
-            // Keyword Filter Field
+            // Keyword Filter Field with Search Operators explanation
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = "Keyword Search",
+                    text = "Keyword Search (supports source:, format:, dynamic:true)",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.LightGray,
                     fontWeight = FontWeight.Medium
@@ -143,7 +154,7 @@ fun FilterBottomSheet(
                 OutlinedTextField(
                     value = keyword,
                     onValueChange = onKeywordChanged,
-                    placeholder = { Text("Search title, URL, domain, or format...", color = Color.Gray, fontSize = 13.sp) },
+                    placeholder = { Text("Search title, URL, or format...", color = Color.Gray, fontSize = 13.sp) },
                     singleLine = true,
                     leadingIcon = {
                         Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = NeonCyan)
@@ -167,6 +178,88 @@ fun FilterBottomSheet(
                         .fillMaxWidth()
                         .testTag("filter_keyword_input")
                 )
+            }
+
+            // Quick Filter Toggles (Favorites, Dynamic Streams, Broken)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Quick Filters",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.LightGray,
+                    fontWeight = FontWeight.Medium
+                )
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = onlyFavorites,
+                        onClick = onToggleFavorites,
+                        leadingIcon = { Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                        label = { Text("Favorites Only", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = CoralPink,
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White
+                        )
+                    )
+
+                    FilterChip(
+                        selected = onlyDynamic,
+                        onClick = onToggleDynamic,
+                        leadingIcon = { Icon(Icons.Default.Stream, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                        label = { Text("Dynamic Streams Only", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = NeonPurple,
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White
+                        )
+                    )
+
+                    FilterChip(
+                        selected = hideBroken,
+                        onClick = onToggleHideBroken,
+                        leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                        label = { Text("Hide Broken", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color.DarkGray,
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White
+                        )
+                    )
+                }
+            }
+
+            // Media Format Chips
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Media Format",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.LightGray,
+                    fontWeight = FontWeight.Medium
+                )
+
+                val formats = listOf("all", "mp4", "webm", "hls", "dash", "gif")
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    formats.forEach { fmt ->
+                        val isSelected = (selectedFormat ?: "all").equals(fmt, ignoreCase = true)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onFormatSelected(fmt) },
+                            label = { Text(fmt.uppercase(), fontSize = 12.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = NeonCyan,
+                                selectedLabelColor = CinemaBlack,
+                                containerColor = CinemaBlack.copy(alpha = 0.5f),
+                                labelColor = Color.LightGray
+                            )
+                        )
+                    }
+                }
             }
 
             // Source Website / Domain Chips
@@ -255,7 +348,7 @@ fun FilterBottomSheet(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (keyword.isNotBlank() || selectedDomains.isNotEmpty()) "Filtered feed active" else "Showing full library",
+                            text = if (keyword.isNotBlank() || selectedDomains.isNotEmpty() || (selectedFormat != null && selectedFormat != "all")) "Filtered feed active" else "Showing full library",
                             color = Color.Gray,
                             fontSize = 11.sp
                         )

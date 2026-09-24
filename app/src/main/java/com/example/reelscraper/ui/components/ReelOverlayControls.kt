@@ -34,10 +34,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.VolumeMute
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -60,8 +65,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.reelscraper.data.model.MediaType
 import com.example.reelscraper.data.model.ScrapedMedia
+import com.example.ui.theme.CinemaBlack
 import com.example.ui.theme.CoralPink
 import com.example.ui.theme.NeonCyan
+import com.example.ui.theme.NeonPurple
 import com.example.ui.theme.VividViolet
 import java.util.Locale
 
@@ -72,9 +79,15 @@ fun ReelOverlayControls(
     isMuted: Boolean,
     currentPositionMs: Long,
     totalDurationMs: Long,
+    aspectRatioName: String = "FIT",
+    playbackSpeedText: String = "1.0x",
     onTogglePlayPause: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onCycleAspectRatio: () -> Unit = {},
+    onCycleSpeed: () -> Unit = {},
+    onRefreshStream: () -> Unit = {},
+    onToggleBroken: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -113,11 +126,11 @@ fun ReelOverlayControls(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp)
+                .height(290.dp)
                 .align(Alignment.BottomCenter)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f))
                     )
                 )
         )
@@ -148,17 +161,17 @@ fun ReelOverlayControls(
         // Right-hand action buttons
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 12.dp, bottom = 80.dp)
+                .padding(end = 12.dp, bottom = 70.dp)
         ) {
             // Favorite Button
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .background(Color.Black.copy(alpha = 0.4f), CircleShape)
                         .scale(heartScale)
                         .testTag("favorite_button")
@@ -167,16 +180,66 @@ fun ReelOverlayControls(
                         imageVector = if (media.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Favorite",
                         tint = if (media.isFavorite) CoralPink else Color.White,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
                 Text(
                     text = if (media.isFavorite) "Liked" else "Like",
                     color = Color.White,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 2.dp)
                 )
+            }
+
+            // Aspect Ratio Toggle
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(
+                    onClick = onCycleAspectRatio,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AspectRatio,
+                        contentDescription = "Toggle Aspect Ratio",
+                        tint = NeonCyan,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Text(
+                    text = aspectRatioName,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
+            // Playback Speed Selector
+            if (media.mediaType != MediaType.GIF) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(
+                        onClick = onCycleSpeed,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = "Playback Speed",
+                            tint = NeonPurple,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = playbackSpeedText,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
             }
 
             // Mute / Unmute Button
@@ -185,7 +248,7 @@ fun ReelOverlayControls(
                     IconButton(
                         onClick = onToggleMute,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(44.dp)
                             .background(Color.Black.copy(alpha = 0.4f), CircleShape)
                             .testTag("mute_button")
                     ) {
@@ -193,13 +256,39 @@ fun ReelOverlayControls(
                             imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeMute else Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = if (isMuted) "Unmute" else "Mute",
                             tint = if (isMuted) CoralPink else Color.White,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                     Text(
                         text = if (isMuted) "Muted" else "Audio",
                         color = Color.White,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+
+            // Refresh Dynamic Stream Button
+            if (media.isDynamic) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(
+                        onClick = onRefreshStream,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh Stream",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = "Refresh",
+                        color = Color.White,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(top = 2.dp)
                     )
@@ -213,7 +302,7 @@ fun ReelOverlayControls(
                         shareMediaUrl(context, media)
                     },
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .background(Color.Black.copy(alpha = 0.4f), CircleShape)
                         .testTag("share_button")
                 ) {
@@ -221,13 +310,13 @@ fun ReelOverlayControls(
                         imageVector = Icons.Default.Share,
                         contentDescription = "Share Stream",
                         tint = Color.White,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
                 Text(
                     text = "Share",
                     color = Color.White,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 2.dp)
                 )
@@ -240,7 +329,7 @@ fun ReelOverlayControls(
                         openWebPage(context, media.sourcePageUrl)
                     },
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .background(Color.Black.copy(alpha = 0.4f), CircleShape)
                         .testTag("source_button")
                 ) {
@@ -248,13 +337,13 @@ fun ReelOverlayControls(
                         imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                         contentDescription = "Open Source Website",
                         tint = NeonCyan,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
                 Text(
                     text = "Source",
                     color = Color.White,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 2.dp)
                 )
@@ -266,13 +355,13 @@ fun ReelOverlayControls(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 80.dp, bottom = 24.dp)
+                .padding(start = 16.dp, end = 76.dp, bottom = 20.dp)
         ) {
-            // Badges row: Domain & Format
+            // Badges row: Domain, Format, Dynamic
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(bottom = 6.dp)
             ) {
                 // Media Type Badge
                 Surface(
@@ -289,8 +378,24 @@ fun ReelOverlayControls(
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                     )
+                }
+
+                // Dynamic Stream Badge
+                if (media.isDynamic) {
+                    Surface(
+                        color = NeonPurple.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "DYNAMIC",
+                            color = NeonPurple,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
                 // Domain chip
@@ -306,7 +411,23 @@ fun ReelOverlayControls(
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // Broken indicator
+                if (media.isBroken) {
+                    Surface(
+                        color = Color.Red.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "BROKEN",
+                            color = Color.Red,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -316,12 +437,12 @@ fun ReelOverlayControls(
             Text(
                 text = media.displayTitle,
                 color = Color.White,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                lineHeight = 20.sp,
-                modifier = Modifier.padding(bottom = 8.dp)
+                lineHeight = 19.sp,
+                modifier = Modifier.padding(bottom = 6.dp)
             )
 
             // Direct URL snippet
@@ -331,7 +452,7 @@ fun ReelOverlayControls(
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 12.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             )
 
             // Progress Scrubber (for video streams)
@@ -348,23 +469,21 @@ fun ReelOverlayControls(
                         trackColor = Color.White.copy(alpha = 0.25f),
                     )
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
                             text = formatTime(currentPositionMs),
-                            color = Color.LightGray,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 10.sp
                         )
                         Text(
-                            text = if (media.isStream && totalDurationMs <= 0L) "LIVE" else formatTime(totalDurationMs),
-                            color = Color.LightGray,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium
+                            text = formatTime(totalDurationMs),
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 10.sp
                         )
                     }
                 }
@@ -374,36 +493,37 @@ fun ReelOverlayControls(
 }
 
 private fun formatTime(millis: Long): String {
-    if (millis <= 0L) return "0:00"
     val totalSeconds = millis / 1000
     val minutes = totalSeconds / 60
-    val remainingSeconds = totalSeconds % 60
-    return String.format(Locale.US, "%d:%02d", minutes, remainingSeconds)
+    val seconds = totalSeconds % 60
+    return String.format(Locale.US, "%d:%02d", minutes, seconds)
 }
 
 private fun shareMediaUrl(context: Context, media: ScrapedMedia) {
     try {
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, "Extracted with ReelScraper:\n${media.displayTitle}\n${media.url}")
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, media.displayTitle)
+            putExtra(
+                Intent.EXTRA_TEXT,
+                "${media.displayTitle}\n\nStream URL: ${media.url}\n\nSource: ${media.sourcePageUrl}"
+            )
         }
-        val shareIntent = Intent.createChooser(sendIntent, "Share Media Stream")
-        context.startActivity(shareIntent)
+        context.startActivity(Intent.createChooser(shareIntent, "Share Video Stream"))
     } catch (_: Exception) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Media URL", media.url)
-        clipboard.setPrimaryClip(clip)
+        clipboard.setPrimaryClip(ClipData.newPlainText("Media URL", media.url))
         Toast.makeText(context, "URL copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 }
 
 private fun openWebPage(context: Context, url: String) {
-    if (url.isBlank()) return
     try {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        context.startActivity(intent)
+        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(browserIntent)
     } catch (_: Exception) {
-        Toast.makeText(context, "Cannot open source page", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Unable to open browser", Toast.LENGTH_SHORT).show()
     }
 }

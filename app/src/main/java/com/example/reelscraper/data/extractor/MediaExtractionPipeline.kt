@@ -85,8 +85,6 @@ class MediaExtractionPipeline(
 
         val globalDomain = MediaNormalizer.normalizeDomain(context.pageUrl)
 
-        // Deduplicate candidates by normalizedName + sourceDomain
-        // If multiple candidates have same normalizedName + sourceDomain, keep the highest priority
         val mediaMap = mutableMapOf<Pair<String, String>, ScrapedMedia>()
 
         for (candidate in candidates) {
@@ -99,11 +97,6 @@ class MediaExtractionPipeline(
 
             val key = Pair(normalizedName, candidateDomain)
 
-            // Resolve best title according to priority:
-            // 1. JSON-LD name / candidate title
-            // 2. og:title
-            // 3. pageTitle
-            // 4. normalizedName
             val resolvedTitle = candidate.title?.ifBlank { null }
                 ?: ogTitle?.ifBlank { null }
                 ?: pageTitle?.ifBlank { null }
@@ -112,10 +105,6 @@ class MediaExtractionPipeline(
                     .filter { it.isNotBlank() }
                     .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
 
-            // Resolve best poster according to priority:
-            // 1. candidate.posterUrl
-            // 2. og:image
-            // 3. firstImg
             val resolvedPoster = candidate.posterUrl?.ifBlank { null }
                 ?: ogImage?.ifBlank { null }
                 ?: firstImg?.ifBlank { null }
@@ -133,10 +122,11 @@ class MediaExtractionPipeline(
                 width = candidate.width,
                 height = candidate.height,
                 extractorType = candidate.extractorType,
-                discoveredTimestamp = System.currentTimeMillis()
+                discoveredTimestamp = System.currentTimeMillis(),
+                hdrType = candidate.hdrType,
+                frameRate = candidate.frameRate
             )
 
-            // If already present, only replace if this candidate has higher priority
             val existing = mediaMap[key]
             if (existing == null) {
                 mediaMap[key] = scraped

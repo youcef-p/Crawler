@@ -25,14 +25,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.reelscraper.di.AppContainer
+import com.example.reelscraper.ui.screens.DuplicateManagerScreen
 import com.example.reelscraper.ui.screens.ReelsFeedScreen
 import com.example.reelscraper.ui.screens.ScraperScreen
 import com.example.reelscraper.ui.screens.SearchScreen
 import com.example.reelscraper.ui.screens.SettingsScreen
+import com.example.reelscraper.ui.screens.SiteProfilesScreen
+import com.example.reelscraper.ui.screens.SnifferScreen
 import com.example.reelscraper.ui.viewmodel.FeedViewModel
 import com.example.reelscraper.ui.viewmodel.ScraperViewModel
 import com.example.reelscraper.ui.viewmodel.SearchViewModel
 import com.example.reelscraper.ui.viewmodel.SettingsViewModel
+import com.example.reelscraper.ui.viewmodel.SiteProfilesViewModel
+import com.example.reelscraper.ui.viewmodel.SnifferViewModel
 import com.example.ui.theme.CinemaBlack
 import com.example.ui.theme.CinemaSurface
 import com.example.ui.theme.NeonCyan
@@ -40,7 +45,9 @@ import com.example.ui.theme.NeonCyan
 @Composable
 fun ReelScraperNavHost(
     appContainer: AppContainer,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isInPipMode: Boolean = false,
+    onRequestPip: () -> Unit = {}
 ) {
     val navController = rememberNavController()
 
@@ -48,6 +55,8 @@ fun ReelScraperNavHost(
     val feedViewModel: FeedViewModel = viewModel(factory = appContainer.viewModelFactory)
     val searchViewModel: SearchViewModel = viewModel(factory = appContainer.viewModelFactory)
     val settingsViewModel: SettingsViewModel = viewModel(factory = appContainer.viewModelFactory)
+    val snifferViewModel: SnifferViewModel = viewModel(factory = appContainer.viewModelFactory)
+    val siteProfilesViewModel: SiteProfilesViewModel = viewModel(factory = appContainer.viewModelFactory)
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Reels.route
@@ -55,6 +64,7 @@ fun ReelScraperNavHost(
     val navItems = listOf(
         Screen.Reels,
         Screen.Scraper,
+        Screen.Sniffer,
         Screen.Library,
         Screen.Settings
     )
@@ -63,48 +73,50 @@ fun ReelScraperNavHost(
         modifier = modifier.fillMaxSize(),
         containerColor = CinemaBlack,
         bottomBar = {
-            NavigationBar(
-                containerColor = CinemaSurface.copy(alpha = 0.95f),
-                tonalElevation = 8.dp
-            ) {
-                navItems.forEach { screen ->
-                    val isSelected = currentRoute == screen.route
-                    NavigationBarItem(
-                        selected = isSelected,
-                        onClick = {
-                            if (currentRoute != screen.route) {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+            if (!isInPipMode) {
+                NavigationBar(
+                    containerColor = CinemaSurface.copy(alpha = 0.95f),
+                    tonalElevation = 8.dp
+                ) {
+                    navItems.forEach { screen ->
+                        val isSelected = currentRoute == screen.route
+                        NavigationBarItem(
+                            selected = isSelected,
+                            onClick = {
+                                if (currentRoute != screen.route) {
+                                    navController.navigate(screen.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
                                 }
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = screen.icon,
-                                contentDescription = screen.title,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = screen.title,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = NeonCyan,
-                            selectedTextColor = NeonCyan,
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray,
-                            indicatorColor = CinemaSurface
-                        ),
-                        modifier = Modifier.testTag("nav_item_${screen.route}")
-                    )
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = screen.icon,
+                                    contentDescription = screen.title,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            label = {
+                                Text(
+                                    text = screen.title,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NeonCyan,
+                                selectedTextColor = NeonCyan,
+                                unselectedIconColor = Color.Gray,
+                                unselectedTextColor = Color.Gray,
+                                indicatorColor = CinemaSurface
+                            ),
+                            modifier = Modifier.testTag("nav_item_${screen.route}")
+                        )
+                    }
                 }
             }
         }
@@ -112,11 +124,13 @@ fun ReelScraperNavHost(
         NavHost(
             navController = navController,
             startDestination = Screen.Reels.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(if (isInPipMode) androidx.compose.foundation.layout.PaddingValues(0.dp) else innerPadding)
         ) {
             composable(Screen.Reels.route) {
                 ReelsFeedScreen(
                     viewModel = feedViewModel,
+                    isInPipMode = isInPipMode,
+                    onRequestPip = onRequestPip,
                     onNavigateToScraper = {
                         navController.navigate(Screen.Scraper.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
@@ -142,10 +156,33 @@ fun ReelScraperNavHost(
                 )
             }
 
+            composable(Screen.Sniffer.route) {
+                val mediaList by feedViewModel.mediaList.collectAsStateWithLifecycle()
+                SnifferScreen(
+                    viewModel = snifferViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onPlayMedia = { media ->
+                        val index = mediaList.indexOfFirst { it.url == media.url }
+                        if (index != -1) {
+                            feedViewModel.jumpToIndex(index)
+                        }
+                        navController.navigate(Screen.Reels.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
             composable(Screen.Library.route) {
                 val mediaList by feedViewModel.mediaList.collectAsStateWithLifecycle()
                 SearchScreen(
                     viewModel = searchViewModel,
+                    sharedPreviewPlayer = appContainer.sharedPreviewPlayer,
                     onPlayMedia = { media ->
                         val index = mediaList.indexOfFirst { it.id == media.id }
                         if (index != -1) {
@@ -163,7 +200,31 @@ fun ReelScraperNavHost(
 
             composable(Screen.Settings.route) {
                 SettingsScreen(
-                    viewModel = settingsViewModel
+                    viewModel = settingsViewModel,
+                    onNavigateToProfiles = {
+                        navController.navigate(Screen.SiteProfiles.route)
+                    },
+                    onNavigateToDuplicates = {
+                        navController.navigate(Screen.Duplicates.route)
+                    }
+                )
+            }
+
+            composable(Screen.SiteProfiles.route) {
+                SiteProfilesScreen(
+                    viewModel = siteProfilesViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(Screen.Duplicates.route) {
+                DuplicateManagerScreen(
+                    mediaRepository = appContainer.mediaRepository,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
                 )
             }
         }

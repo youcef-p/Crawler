@@ -83,6 +83,13 @@ class FakeMediaDao : MediaDao {
 
     override suspend fun getAllExistingUrls(): List<String> = items.map { it.url }
 
+    override suspend fun removeInvalidGoogleStorageSamples(): Int {
+        val initialSize = items.size
+        items.removeAll { it.url.contains("commondatastorage.googleapis.com/gtv-videos-bucket") }
+        notifyChanges()
+        return initialSize - items.size
+    }
+
     override suspend fun getAllMediaList(): List<ScrapedMedia> = items.toList()
 
     override suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean) {
@@ -130,6 +137,73 @@ class FakeMediaDao : MediaDao {
     override suspend fun clearAll() {
         items.clear()
         notifyChanges()
+    }
+
+    override fun getDynamicStreams(): Flow<List<ScrapedMedia>> = stateFlow.map { list ->
+        list.filter { it.isDynamic }
+    }
+
+    override fun getBrokenMedia(): Flow<List<ScrapedMedia>> = stateFlow.map { list ->
+        list.filter { it.isBroken }
+    }
+
+    override suspend fun getMediaByIdDirect(id: Long): ScrapedMedia? {
+        return items.find { it.id == id }
+    }
+
+    override fun getFilteredMediaAdvanced(
+        keyword: String?,
+        filterDomains: Int,
+        domains: List<String>,
+        filterFormat: Int,
+        format: String,
+        mediaTypeStr: String,
+        onlyFavorites: Int,
+        onlyDynamic: Int,
+        hideBroken: Int
+    ): Flow<List<ScrapedMedia>> = stateFlow.map { list ->
+        list.filter { item ->
+            val matchesKeyword = keyword.isNullOrBlank() ||
+                    item.title.contains(keyword, ignoreCase = true) ||
+                    item.url.contains(keyword, ignoreCase = true)
+            val matchesDomain = filterDomains == 0 || domains.contains(item.sourceDomain)
+            val matchesFormat = filterFormat == 0 || item.fileExtension.equals(format, ignoreCase = true) || item.mediaType.name.equals(mediaTypeStr, ignoreCase = true)
+            val matchesFav = onlyFavorites == 0 || item.isFavorite
+            val matchesDyn = onlyDynamic == 0 || item.isDynamic
+            val matchesBroken = hideBroken == 0 || !item.isBroken
+            matchesKeyword && matchesDomain && matchesFormat && matchesFav && matchesDyn && matchesBroken
+        }
+    }
+
+    override suspend fun updateBrokenStatus(id: Long, isBroken: Boolean) {
+        val index = items.indexOfFirst { it.id == id }
+        if (index != -1) {
+            items[index] = items[index].copy(isBroken = isBroken)
+            notifyChanges()
+        }
+    }
+
+    override suspend fun updateRefreshedStreamUrl(id: Long, newUrl: String, newHeaders: String?) {
+        val index = items.indexOfFirst { it.id == id }
+        if (index != -1) {
+            items[index] = items[index].copy(url = newUrl, playbackHeadersJson = newHeaders, isBroken = false)
+            notifyChanges()
+        }
+    }
+
+    override suspend fun recordPlaybackState(id: Long, positionMs: Long, timestamp: Long) {
+        val index = items.indexOfFirst { it.id == id }
+        if (index != -1) {
+            items[index] = items[index].copy(lastPositionMs = positionMs, lastPlayedTimestamp = timestamp)
+            notifyChanges()
+        }
+    }
+
+    override suspend fun clearBrokenMedia(): Int {
+        val count = items.count { it.isBroken }
+        items.removeAll { it.isBroken }
+        notifyChanges()
+        return count
     }
 }
 
