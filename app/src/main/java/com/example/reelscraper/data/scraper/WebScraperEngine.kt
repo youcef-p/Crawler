@@ -20,14 +20,15 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
-import java.util.ArrayDeque
+import java.util.PriorityQueue
 import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 data class CrawlNode(
     val url: String,
-    val level: Int // 1-indexed (Level 1 = seed URL)
+    val level: Int,
+    val priority: Int = 0
 )
 
 class WebScraperEngine(
@@ -133,9 +134,9 @@ class WebScraperEngine(
         persister.startJob(normalizedSeed, targetMaxLevel)
 
         val visitedUrls = Collections.synchronizedSet(mutableSetOf<String>())
-        val queue = ArrayDeque<CrawlNode>()
+        val queue = PriorityQueue<CrawlNode>(compareByDescending<CrawlNode> { it.priority }.thenBy { it.level }.thenBy { it.url })
 
-        queue.add(CrawlNode(normalizedSeed, 1))
+        queue.add(CrawlNode(normalizedSeed, 1, Int.MAX_VALUE))
         visitedUrls.add(normalizedSeed)
 
         if (settings.discoverSitemaps) {
@@ -146,7 +147,7 @@ class WebScraperEngine(
                 seedUri.scheme + "://" + seedUri.authority + "/sitemap_index.xml"
             )
             sitemapCandidates.forEach { sitemap ->
-                if (visitedUrls.add(sitemap)) queue.add(CrawlNode(sitemap, 1))
+                if (visitedUrls.add(sitemap)) queue.add(CrawlNode(sitemap, 1, 900))
             }
         }
 
@@ -234,6 +235,29 @@ class WebScraperEngine(
                             Jsoup.parse(body, finalUrl)
                         } else null
 
+                        if (node.url.endsWith("/robots.txt", ignoreCase = true)) {
+                            Regex("""(?im)^\s*Sitemap:\s*(https?://\S+)""")
+                                .findAll(body)
+                                .map { it.groupValues[1].trim() }
+                                .forEach { sitemap ->
+                                    if (visitedUrls.add(sitemap)) queue.add(CrawlNode(sitemap, node.level, 950))
+                                }
+                        }
+
+                        if (node.url.contains("sitemap", ignoreCase = true) &&
+                            (contentType.contains("xml", ignoreCase = true) || body.trimStart().startsWith("<?xml", ignoreCase = true))) {
+                            Regex("""(?is)<loc>\s*(.*?)\s*</loc>""")
+                                .findAll(body)
+                                .map { it.groupValues[1].trim() }
+                                .mapNotNull { MediaNormalizer.normalizeUrl(it, finalUrl) }
+                                .take(settings.maxLinksPerPage.coerceAtLeast(1))
+                                .forEach { sitemapUrl ->
+                                    if (visitedUrls.add(sitemapUrl)) {
+                                        queue.add(CrawlNode(sitemapUrl, (node.level + 1).coerceAtMost(targetMaxLevel), 800 + discoveryPriority(sitemapUrl)))
+                                    }
+                                }
+                        }
+
                         val context = ExtractionContext(
                             pageUrl = finalUrl,
                             document = doc,
@@ -275,7 +299,7 @@ class WebScraperEngine(
 
                                 if (visitedUrls.add(normalized)) {
                                     linkCount++
-                                    queue.add(CrawlNode(normalized, node.level + 1))
+                                    queue.add(CrawlNode(normalized, node.level + 1, discoveryPriority(normalized)))
                                 }
                             }
 
@@ -304,6 +328,23 @@ class WebScraperEngine(
             Log.e(TAG, "Crawl failed with unrecoverable error", e)
             persister.finishJob(CrawlJobStatus.FAILED, e.localizedMessage)
         }
+    }
+
+    private fun discoveryPriority(url: String): Int {
+        val lower = url.lowercase(Locale.US)
+        var score = 0
+        listOf("video", "watch", "reel", "short", "player", "embed", "stream", "media", "gallery", "clip").forEach {
+            if (lower.contains(it)) score += 35
+        }
+        listOf("article", "post", "story", "news", "episode", "movie").forEach {
+            if (lower.contains(it)) score += 10
+        }
+        listOf("login", "logout", "signup", "register", "account", "cart", "privacy", "terms", "tag/", "category/").forEach {
+            if (lower.contains(it)) score -= 30
+        }
+        if (isDirectMediaUrl(lower)) score += 250
+        if (lower.contains("m3u8") || lower.contains("mpd")) score += 350
+        return score.coerceIn(-200, 1000)
     }
 
     private fun isDirectMediaUrl(url: String): Boolean {
