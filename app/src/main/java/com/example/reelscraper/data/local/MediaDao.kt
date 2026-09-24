@@ -12,7 +12,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MediaDao {
-    @Query("SELECT * FROM scraped_media ORDER BY discoveredTimestamp DESC")
+    @Query("""
+        SELECT * FROM scraped_media
+        ORDER BY
+            CASE WHEN isFavorite = 1 THEN 0 ELSE 1 END,
+            CASE WHEN isBroken = 1 THEN 1 ELSE 0 END,
+            CASE WHEN lastPlayedTimestamp IS NOT NULL THEN 0 ELSE 1 END,
+            discoveredTimestamp DESC
+    """)
     fun getAllMedia(): Flow<List<ScrapedMedia>>
 
     @Query("SELECT * FROM scraped_media ORDER BY discoveredTimestamp DESC")
@@ -61,7 +68,10 @@ interface MediaDao {
           AND (:onlyFavorites = 0 OR isFavorite = 1)
           AND (:onlyDynamic = 0 OR isDynamic = 1)
           AND (:hideBroken = 0 OR isBroken = 0)
-        ORDER BY discoveredTimestamp DESC
+        ORDER BY
+            CASE WHEN isFavorite = 1 THEN 0 ELSE 1 END,
+            CASE WHEN isBroken = 1 THEN 1 ELSE 0 END,
+            discoveredTimestamp DESC
     """)
     fun getFilteredMediaAdvanced(
         keyword: String?,
