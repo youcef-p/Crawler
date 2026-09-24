@@ -141,9 +141,9 @@ class WebScraperEngine(
         if (settings.discoverSitemaps) {
             val seedUri = java.net.URI(normalizedSeed)
             val sitemapCandidates = listOf(
-                java.net.URI(seedUri.scheme, seedUri.authority, "/robots.txt", null).toString(),
-                java.net.URI(seedUri.scheme, seedUri.authority, "/sitemap.xml", null).toString(),
-                java.net.URI(seedUri.scheme, seedUri.authority, "/sitemap_index.xml", null).toString()
+                seedUri.scheme + "://" + seedUri.authority + "/robots.txt",
+                seedUri.scheme + "://" + seedUri.authority + "/sitemap.xml",
+                seedUri.scheme + "://" + seedUri.authority + "/sitemap_index.xml"
             )
             sitemapCandidates.forEach { sitemap ->
                 if (visitedUrls.add(sitemap)) queue.add(CrawlNode(sitemap, 1))
