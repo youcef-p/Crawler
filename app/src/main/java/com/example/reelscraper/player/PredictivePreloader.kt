@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.ConcurrentHashMap
@@ -20,6 +21,9 @@ class PredictivePreloader(
 ) {
     private val activePreloads = ConcurrentHashMap<String, Job>()
     private var lastIndex: Int = 0
+    private val preloadClient = okHttpClient.newBuilder()
+        .callTimeout(8, TimeUnit.SECONDS)
+        .build()
 
     fun onPageChanged(currentIndex: Int, mediaList: List<ScrapedMedia>, preloadCount: Int, isDataSaver: Boolean) {
         if (isDataSaver || preloadCount <= 0 || mediaList.isEmpty()) {
@@ -44,7 +48,7 @@ class PredictivePreloader(
         }
 
         // Launch preloads
-        for (item in targets) {
+        for (item in targets.distinctBy { it.url }) {
             val job = coroutineScope.launch(Dispatchers.IO) {
                 preloadInitialBytes(item.url)
             }
@@ -54,19 +58,23 @@ class PredictivePreloader(
 
     private fun preloadInitialBytes(url: String) {
         try {
-            // Request first 64KB for MP4/WebM or first manifest for HLS/DASH
-            val req = Request.Builder()
-                .url(url)
-                .header("Range", "bytes=0-65536")
-                .build()
-
-            okHttpClient.newCall(req).execute().use { resp ->
-                resp.body?.byteStream()?.use { stream ->
-                    val buffer = ByteArray(8192)
-                    var total = 0
-                    var read: Int
-                    while (stream.read(buffer).also { read = it } != -1 && total < 65536) {
-                        total += read
+            val lower = url.lowercase()
+            val isManifest = lower.contains(".m3u8") || lower.contains(".mpd") ||
+                lower.contains("master.m3u8") || lower.contains("/manifest")
+            val reqBuilder = Request.Builder().url(url)
+            if (!isManifest) reqBuilder.header("Range", "bytes=0-65536")
+            preloadClient.newCall(reqBuilder.build()).execute().use { resp ->
+                if (!resp.isSuccessful) return
+                if (isManifest) {
+                    resp.body?.string()?.take(256 * 1024)
+                } else {
+                    resp.body?.byteStream()?.use { stream ->
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        var read: Int
+                        while (stream.read(buffer).also { read = it } != -1 && total < 65536) {
+                            total += read
+                        }
                     }
                 }
             }
