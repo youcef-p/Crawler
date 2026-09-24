@@ -28,6 +28,11 @@ open class SettingsRepository(
         val PAGE_TIMEOUT_SECONDS = intPreferencesKey("page_timeout_seconds")
         val REQUEST_DELAY_MS = longPreferencesKey("request_delay_ms")
         val RETRY_COUNT = intPreferencesKey("retry_count")
+        val SAME_DOMAIN_ONLY = booleanPreferencesKey("same_domain_only")
+        val INCLUDE_SUBDOMAINS = booleanPreferencesKey("include_subdomains")
+        val DISCOVER_SITEMAPS = booleanPreferencesKey("discover_sitemaps")
+        val DISCOVER_MEDIA_LINK_PRELOADS = booleanPreferencesKey("discover_media_link_preloads")
+        val FOLLOW_PAGINATION_LINKS = booleanPreferencesKey("follow_pagination_links")
 
         val EXTRACT_MP4 = booleanPreferencesKey("extract_mp4")
         val EXTRACT_WEBM = booleanPreferencesKey("extract_webm")
@@ -122,6 +127,11 @@ open class SettingsRepository(
             pageTimeoutSeconds = preferences[PreferencesKeys.PAGE_TIMEOUT_SECONDS] ?: 8,
             requestDelayMs = preferences[PreferencesKeys.REQUEST_DELAY_MS] ?: 100L,
             retryCount = preferences[PreferencesKeys.RETRY_COUNT] ?: 2,
+            sameDomainOnly = preferences[PreferencesKeys.SAME_DOMAIN_ONLY] ?: true,
+            includeSubdomains = preferences[PreferencesKeys.INCLUDE_SUBDOMAINS] ?: false,
+            discoverSitemaps = preferences[PreferencesKeys.DISCOVER_SITEMAPS] ?: true,
+            discoverMediaFromLinkPreloads = preferences[PreferencesKeys.DISCOVER_MEDIA_LINK_PRELOADS] ?: true,
+            followPaginationLinks = preferences[PreferencesKeys.FOLLOW_PAGINATION_LINKS] ?: true,
 
             extractMp4 = preferences[PreferencesKeys.EXTRACT_MP4] ?: true,
             extractWebm = preferences[PreferencesKeys.EXTRACT_WEBM] ?: true,
@@ -202,6 +212,22 @@ open class SettingsRepository(
             enableHeatmapCollection = preferences[PreferencesKeys.ENABLE_HEATMAP_COLLECTION] ?: true,
             libraryPreviewMode = preferences[PreferencesKeys.LIBRARY_PREVIEW_MODE] ?: "LONG_PRESS"
         )
+    }
+
+    suspend fun updateDiscoverySettings(
+        sameDomainOnly: Boolean,
+        includeSubdomains: Boolean,
+        discoverSitemaps: Boolean,
+        discoverMediaFromLinkPreloads: Boolean,
+        followPaginationLinks: Boolean
+    ) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SAME_DOMAIN_ONLY] = sameDomainOnly
+            preferences[PreferencesKeys.INCLUDE_SUBDOMAINS] = includeSubdomains
+            preferences[PreferencesKeys.DISCOVER_SITEMAPS] = discoverSitemaps
+            preferences[PreferencesKeys.DISCOVER_MEDIA_LINK_PRELOADS] = discoverMediaFromLinkPreloads
+            preferences[PreferencesKeys.FOLLOW_PAGINATION_LINKS] = followPaginationLinks
+        }
     }
 
     suspend fun updateScanLevels(levels: Int) {
