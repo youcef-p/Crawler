@@ -122,6 +122,21 @@ class SettingsViewModel(
         }
     }
 
+    fun updateDiscoverySettings(
+        sameDomainOnly: Boolean,
+        includeSubdomains: Boolean,
+        discoverSitemaps: Boolean,
+        discoverMediaFromLinkPreloads: Boolean,
+        followPaginationLinks: Boolean
+    ) {
+        viewModelScope.launch {
+            settingsRepository.updateDiscoverySettings(
+                sameDomainOnly, includeSubdomains, discoverSitemaps,
+                discoverMediaFromLinkPreloads, followPaginationLinks
+            )
+        }
+    }
+
     fun updateScanLevels(levels: Int) {
         viewModelScope.launch {
             settingsRepository.updateScanLevels(levels)
