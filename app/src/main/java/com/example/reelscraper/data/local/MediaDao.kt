@@ -140,6 +140,6 @@ interface MediaDao {
     @Query("DELETE FROM scraped_media WHERE isBroken = 1")
     suspend fun clearBrokenMedia(): Int
 
-    @Query("DELETE FROM scraped_media WHERE id NOT IN (SELECT MIN(id) FROM scraped_media GROUP BY normalizedName, sourceDomain)")
+    @Query("DELETE FROM scraped_media WHERE id NOT IN (SELECT MIN(id) FROM scraped_media GROUP BY url)")
     suspend fun clearDuplicates(): Int
 }
