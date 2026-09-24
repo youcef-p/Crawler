@@ -355,7 +355,7 @@ class FeedViewModel(
         val media = mediaList.value.getOrNull(currentIdx)
         if (media != null && durationMs > 0 && playbackStateDao != null) {
             val now = System.currentTimeMillis()
-            val isCompleted = = (positionMs.toFloat() / durationMs.toFloat()) >= (appSettings.value.markWatchedThreshold / 100f)
+            val isCompleted = (positionMs.toFloat() / durationMs.toFloat()) >= (appSettings.value.markWatchedThreshold / 100f)
             if (!isCompleted && media.id == lastPersistedMediaId && now - lastPlaybackPersistAt < 1000L) return
             lastPlaybackPersistAt = now
             lastPersistedMediaId = media.id
