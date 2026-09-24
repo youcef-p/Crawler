@@ -138,6 +138,18 @@ class WebScraperEngine(
         queue.add(CrawlNode(normalizedSeed, 1))
         visitedUrls.add(normalizedSeed)
 
+        if (settings.discoverSitemaps) {
+            val seedUri = java.net.URI(normalizedSeed)
+            val sitemapCandidates = listOf(
+                java.net.URI(seedUri.scheme, seedUri.authority, "/robots.txt", null).toString(),
+                java.net.URI(seedUri.scheme, seedUri.authority, "/sitemap.xml", null).toString(),
+                java.net.URI(seedUri.scheme, seedUri.authority, "/sitemap_index.xml", null).toString()
+            )
+            sitemapCandidates.forEach { sitemap ->
+                if (visitedUrls.add(sitemap)) queue.add(CrawlNode(sitemap, 1))
+            }
+        }
+
         val semaphore = Semaphore(settings.maxConcurrentRequests.coerceIn(1, 10))
         val seedDomain = MediaNormalizer.normalizeDomain(normalizedSeed)
         var pagesVisitedCount = 0
@@ -243,7 +255,12 @@ class WebScraperEngine(
                         )
 
                         if (node.level < targetMaxLevel && doc != null) {
-                            val links = doc.select("a[href]")
+                            val links = doc.select("a[href]").toMutableList()
+                            if (settings.followPaginationLinks) {
+                                links.addAll(
+                                    doc.select("a[rel~=next], a[aria-label~=next i], a[aria-label~=older i], a[title~=next i]")
+                                )
+                            }
                             var linkCount = 0
 
                             for (link in links) {
