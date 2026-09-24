@@ -16,6 +16,7 @@ import com.example.reelscraper.data.settings.SettingsRepository
 import com.example.reelscraper.intelligence.chapter.LocalChapterGenerator
 import com.example.reelscraper.intelligence.subtitle.LocalSubtitleGenerator
 import com.example.reelscraper.player.DynamicStreamResolver
+import com.example.reelscraper.player.StreamResolutionResult
 import com.example.reelscraper.player.HeatmapTracker
 import com.example.reelscraper.player.PredictivePreloader
 import com.example.reelscraper.player.TrickPlayManager
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 data class FeedUiState(
@@ -334,14 +336,46 @@ class FeedViewModel(
     }
 
     fun refreshStream(media: ScrapedMedia) {
-        if (streamResolver == null) return
+        val resolver = streamResolver ?: return
         viewModelScope.launch {
-            _feedState.update { it.copy(isRefreshingStream = true, statusMessage = "Refreshing stream from source...") }
-            try {
-                streamResolver.refreshStream(media, appSettings.value)
-                _feedState.update { it.copy(isRefreshingStream = false, statusMessage = "Stream refreshed!") }
-            } catch (_: Exception) {
-                _feedState.update { it.copy(isRefreshingStream = false, statusMessage = "Failed to refresh stream") }
+            val settings = appSettings.value
+            val attempts = settings.maxRefreshRetries.coerceIn(1, 5)
+            _feedState.update {
+                it.copy(
+                    isRefreshingStream = true,
+                    statusMessage = "Refreshing stream from source..."
+                )
+            }
+
+            var lastError = "Failed to refresh stream"
+            repeat(attempts) { attempt ->
+                if (attempt > 0) delay((250L * attempt).coerceAtMost(1000L))
+                try {
+                    when (val result = resolver.refreshStream(media, settings)) {
+                        is StreamResolutionResult.Success -> {
+                            _feedState.update {
+                                it.copy(
+                                    isRefreshingStream = false,
+                                    statusMessage = "Stream refreshed successfully"
+                                )
+                            }
+                            return@launch
+                        }
+                        is StreamResolutionResult.Error -> {
+                            lastError = result.message
+                            if (result.isUnsupported) return@repeat
+                        }
+                    }
+                } catch (e: Exception) {
+                    lastError = e.message ?: lastError
+                }
+            }
+
+            _feedState.update {
+                it.copy(
+                    isRefreshingStream = false,
+                    statusMessage = lastError
+                )
             }
         }
     }
