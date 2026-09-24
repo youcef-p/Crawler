@@ -127,7 +127,11 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
                         ScraperViewModel(mediaRepository, settingsRepository) as T
                     }
                     modelClass.isAssignableFrom(FeedViewModel::class.java) -> {
-                        FeedViewModel(mediaRepository, dynamicStreamResolver) as T
+                        FeedViewModel(
+                            repository = mediaRepository,
+                            streamResolver = dynamicStreamResolver,
+                            settingsRepository = settingsRepository
+                        ) as T
                     }
                     modelClass.isAssignableFrom(SearchViewModel::class.java) -> {
                         SearchViewModel(mediaRepository) as T
