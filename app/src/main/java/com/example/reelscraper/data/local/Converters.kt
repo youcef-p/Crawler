@@ -1,42 +1,33 @@
 package com.example.reelscraper.data.local
 
 import androidx.room.TypeConverter
+import com.example.reelscraper.data.model.ChapterSource
 import com.example.reelscraper.data.model.CrawlJobStatus
 import com.example.reelscraper.data.model.MediaType
-import com.example.reelscraper.data.model.ChapterSource
 import com.example.reelscraper.data.model.SubtitleFormat
 import com.example.reelscraper.data.model.SubtitleSourceType
 import com.example.reelscraper.data.model.TrickPlayType
 
 class Converters {
     @TypeConverter
-    fun fromMediaType(mediaType: MediaType): String {
-        return mediaType.name
+    fun fromMediaType(mediaType: MediaType): String = mediaType.name
+
+    @TypeConverter
+    fun toMediaType(value: String): MediaType = try {
+        MediaType.valueOf(value)
+    } catch (_: Exception) {
+        MediaType.VIDEO
     }
 
     @TypeConverter
-    fun toMediaType(value: String): MediaType {
-        return try {
-            MediaType.valueOf(value)
-        } catch (_: Exception) {
-            MediaType.VIDEO
-        }
-    }
+    fun fromCrawlJobStatus(status: CrawlJobStatus): String = status.name
 
     @TypeConverter
-    fun fromCrawlJobStatus(status: CrawlJobStatus): String {
-        return status.name
+    fun toCrawlJobStatus(value: String): CrawlJobStatus = try {
+        CrawlJobStatus.valueOf(value)
+    } catch (_: Exception) {
+        CrawlJobStatus.COMPLETED
     }
-
-    @TypeConverter
-    fun toCrawlJobStatus(value: String): CrawlJobStatus {
-        return try {
-            CrawlJobStatus.valueOf(value)
-        } catch (_: Exception) {
-            CrawlJobStatus.COMPLETED
-        }
-    }
-}
 
     @TypeConverter
     fun fromChapterSource(value: ChapterSource): String = value.name
@@ -77,3 +68,4 @@ class Converters {
     } catch (_: Exception) {
         TrickPlayType.LOCAL_FRAMES
     }
+}
