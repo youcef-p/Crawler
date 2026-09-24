@@ -3,6 +3,7 @@ package com.example.reelscraper.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.reelscraper.data.local.ChapterDao
+import com.example.reelscraper.data.local.HeatmapDao
 import com.example.reelscraper.data.local.PlaybackStateDao
 import com.example.reelscraper.data.local.SubtitleTrackDao
 import com.example.reelscraper.data.model.Chapter
@@ -18,6 +19,7 @@ import com.example.reelscraper.player.DynamicStreamResolver
 import com.example.reelscraper.player.HeatmapTracker
 import com.example.reelscraper.player.PredictivePreloader
 import com.example.reelscraper.player.TrickPlayManager
+import okhttp3.OkHttpClient
 import com.example.reelscraper.ui.components.PlayerAspectRatio
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,8 +66,16 @@ class FeedViewModel(
     val subtitleGenerator: LocalSubtitleGenerator? = null,
     private val playbackStateDao: PlaybackStateDao? = null,
     private val chapterDao: ChapterDao? = null,
-    private val subtitleDao: SubtitleTrackDao? = null
+    private val subtitleDao: SubtitleTrackDao? = null,
+    private val runtimeOkHttpClient: OkHttpClient? = null,
+    private val runtimeHeatmapDao: HeatmapDao? = null
 ) : ViewModel() {
+
+    val predictivePreloader: PredictivePreloader? =
+        predictivePreloader ?: runtimeOkHttpClient?.let { PredictivePreloader(it, viewModelScope) }
+
+    val heatmapTracker: HeatmapTracker? =
+        heatmapTracker ?: runtimeHeatmapDao?.let { HeatmapTracker(it, viewModelScope) }
 
     val appSettings: StateFlow<AppSettings> = settingsRepository?.settingsFlow
         ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
