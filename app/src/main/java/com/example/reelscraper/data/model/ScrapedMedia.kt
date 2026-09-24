@@ -14,7 +14,8 @@ enum class MediaType {
 @Entity(
     tableName = "scraped_media",
     indices = [
-        Index(value = ["normalizedName", "sourceDomain"], unique = true),
+        Index(value = ["url"], unique = true),
+        Index(value = ["normalizedName", "sourceDomain"]),
         Index(value = ["sourceDomain"]),
         Index(value = ["mediaType"]),
         Index(value = ["discoveredTimestamp"]),

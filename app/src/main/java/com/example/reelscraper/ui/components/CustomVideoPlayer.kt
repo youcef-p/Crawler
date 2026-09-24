@@ -113,6 +113,7 @@ fun CustomVideoPlayer(
     settings: AppSettings,
     aspectRatio: PlayerAspectRatio = PlayerAspectRatio.FIT,
     playbackSpeed: Float = 1.0f,
+    resumePositionMs: Long = 0L,
     trickPlayManager: TrickPlayManager? = null,
     heatmapTracker: HeatmapTracker? = null,
     chapters: List<Chapter> = emptyList(),
@@ -155,6 +156,7 @@ fun CustomVideoPlayer(
     var currentPosition by remember { mutableLongStateOf(0L) }
     var bufferedPosition by remember { mutableLongStateOf(0L) }
     var retryCount by remember { mutableIntStateOf(0) }
+    var resumeApplied by remember(media.id) { mutableStateOf(false) }
     var videoWidth by remember { mutableIntStateOf(0) }
     var videoHeight by remember { mutableIntStateOf(0) }
     var isHdrStream by remember { mutableStateOf(false) }
@@ -255,7 +257,7 @@ fun CustomVideoPlayer(
     }
 
     // Player state and format listener
-    DisposableEffect(exoPlayer) {
+    DisposableEffect(exoPlayer, resumePositionMs) {
         val player = exoPlayer ?: return@DisposableEffect onDispose { }
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -264,6 +266,14 @@ fun CustomVideoPlayer(
                     playbackError = null
                     isBuffering = false
                     duration = player.duration.coerceAtLeast(0L)
+                    if (!resumeApplied &&
+                        resumePositionMs > 5_000L &&
+                        resumePositionMs < duration - 2_000L
+                    ) {
+                        player.seekTo(resumePositionMs)
+                        currentPosition = resumePositionMs
+                        resumeApplied = true
+                    }
                     abrStrategy.updatePlayerState(player)
                 } else if (playbackState == Player.STATE_ENDED) {
                     isBuffering = false
@@ -307,6 +317,18 @@ fun CustomVideoPlayer(
             }
         }
         player.addListener(listener)
+
+        // The saved resume position may arrive after the player is already READY.
+        if (player.playbackState == Player.STATE_READY &&
+            !resumeApplied &&
+            resumePositionMs > 5_000L &&
+            player.duration > 0L &&
+            resumePositionMs < player.duration - 2_000L
+        ) {
+            player.seekTo(resumePositionMs)
+            currentPosition = resumePositionMs
+            resumeApplied = true
+        }
 
         onDispose {
             player.removeListener(listener)

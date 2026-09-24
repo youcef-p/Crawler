@@ -206,7 +206,7 @@ fun ReelsFeedScreen(
         VerticalPager(
             state = pagerState,
             beyondViewportPageCount = 0,
-            key = { index -> mediaList[index].url },
+            key = { index -> mediaList[index].id },
             modifier = Modifier.fillMaxSize()
         ) { page ->
             val mediaItem = mediaList[page]
@@ -221,6 +221,7 @@ fun ReelsFeedScreen(
                     settings = settings,
                     aspectRatio = feedState.aspectRatio,
                     playbackSpeed = feedState.playbackSpeed,
+                    resumePositionMs = feedState.resumePositionMs,
                     trickPlayManager = viewModel.trickPlayManager,
                     heatmapTracker = viewModel.heatmapTracker,
                     chapters = feedState.activeChapters,
@@ -337,7 +338,8 @@ fun ReelsFeedScreen(
                                                     selectedDomains.size +
                                                     (if (selectedFormat != "all") 1 else 0) +
                                                     (if (onlyFavorites) 1 else 0) +
-                                                    (if (onlyDynamic) 1 else 0)
+                                                    (if (onlyDynamic) 1 else 0) +
+                                                    (if (!hideBroken) 1 else 0)
                                             Text(text = filterCount.toString())
                                         }
                                     }

@@ -32,6 +32,9 @@ interface StreamSessionDao {
     @Delete
     suspend fun deleteSession(session: StreamSession)
 
+    @Query("UPDATE stream_sessions SET isActive = 0 WHERE mediaId = :mediaId")
+    suspend fun deactivateSessionsForMedia(mediaId: Long)
+
     @Query("DELETE FROM stream_sessions WHERE id = :id")
     suspend fun deleteById(id: Long)
 

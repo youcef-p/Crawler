@@ -3,6 +3,7 @@ package com.example.reelscraper.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.reelscraper.data.local.ChapterDao
+import com.example.reelscraper.data.local.HeatmapDao
 import com.example.reelscraper.data.local.PlaybackStateDao
 import com.example.reelscraper.data.local.SubtitleTrackDao
 import com.example.reelscraper.data.model.Chapter
@@ -15,9 +16,11 @@ import com.example.reelscraper.data.settings.SettingsRepository
 import com.example.reelscraper.intelligence.chapter.LocalChapterGenerator
 import com.example.reelscraper.intelligence.subtitle.LocalSubtitleGenerator
 import com.example.reelscraper.player.DynamicStreamResolver
+import com.example.reelscraper.player.StreamResolutionResult
 import com.example.reelscraper.player.HeatmapTracker
 import com.example.reelscraper.player.PredictivePreloader
 import com.example.reelscraper.player.TrickPlayManager
+import okhttp3.OkHttpClient
 import com.example.reelscraper.ui.components.PlayerAspectRatio
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,6 +36,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 data class FeedUiState(
@@ -40,6 +44,7 @@ data class FeedUiState(
     val isPlaying: Boolean = true,
     val isMuted: Boolean = false,
     val currentPositionMs: Long = 0L,
+    val resumePositionMs: Long = 0L,
     val totalDurationMs: Long = 0L,
     val isControlsVisible: Boolean = true,
     val isBuffering: Boolean = false,
@@ -58,14 +63,22 @@ class FeedViewModel(
     private val streamResolver: DynamicStreamResolver? = null,
     private val settingsRepository: SettingsRepository? = null,
     val trickPlayManager: TrickPlayManager? = null,
-    val heatmapTracker: HeatmapTracker? = null,
-    val predictivePreloader: PredictivePreloader? = null,
+    private val suppliedHeatmapTracker: HeatmapTracker? = null,
+    private val suppliedPredictivePreloader: PredictivePreloader? = null,
     val chapterGenerator: LocalChapterGenerator? = null,
     val subtitleGenerator: LocalSubtitleGenerator? = null,
     private val playbackStateDao: PlaybackStateDao? = null,
     private val chapterDao: ChapterDao? = null,
-    private val subtitleDao: SubtitleTrackDao? = null
+    private val subtitleDao: SubtitleTrackDao? = null,
+    private val runtimeOkHttpClient: OkHttpClient? = null,
+    private val runtimeHeatmapDao: HeatmapDao? = null
 ) : ViewModel() {
+
+    val predictivePreloader: PredictivePreloader? =
+        suppliedPredictivePreloader ?: runtimeOkHttpClient?.let { PredictivePreloader(it, viewModelScope) }
+
+    val heatmapTracker: HeatmapTracker? =
+        suppliedHeatmapTracker ?: runtimeHeatmapDao?.let { HeatmapTracker(it, viewModelScope) }
 
     val appSettings: StateFlow<AppSettings> = settingsRepository?.settingsFlow
         ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
@@ -97,9 +110,9 @@ class FeedViewModel(
         )
 
     val hasActiveFilters: StateFlow<Boolean> = combine(
-        _keyword, _selectedDomains, _selectedFormat, _onlyFavorites, _onlyDynamic
-    ) { kw, domains, fmt, fav, dyn ->
-        kw.isNotBlank() || domains.isNotEmpty() || fmt != "all" || fav || dyn
+        _keyword, _selectedDomains, _selectedFormat, _onlyFavorites, _onlyDynamic, _hideBroken
+    ) { kw, domains, fmt, fav, dyn, hideBrk ->
+        kw.isNotBlank() || domains.isNotEmpty() || fmt != "all" || fav || dyn || !hideBrk
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -153,6 +166,9 @@ class FeedViewModel(
     )
 
     private val _feedState = MutableStateFlow(FeedUiState())
+    private var lastPlaybackPersistAt: Long = 0L
+    private var lastPersistedMediaId: Long = -1L
+    private var lastPersistedCompleted: Boolean = false
     val feedState: StateFlow<FeedUiState> = _feedState.asStateFlow()
 
     fun onKeywordChanged(newKeyword: String) {
@@ -208,8 +224,11 @@ class FeedViewModel(
                 currentItemIndex = newIndex,
                 isPlaying = true,
                 currentPositionMs = 0L,
+                resumePositionMs = 0L,
                 totalDurationMs = 0L,
-                isBuffering = true
+                isBuffering = true,
+                activeChapters = emptyList(),
+                activeSubtitles = emptyList()
             )
         }
 
@@ -225,6 +244,30 @@ class FeedViewModel(
                 isDataSaver = appSettings.value.dataSaverMode
             )
 
+            if (appSettings.value.resumePlayback &&
+                playbackStateDao != null &&
+                appSettings.value.resumeBehavior != "BEGINNING"
+            ) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val state = playbackStateDao.getPlaybackStateDirect(media.id)
+                    val savedPosition = when (appSettings.value.resumeBehavior) {
+                        "ALWAYS" -> state?.positionMillis ?: 0L
+                        "ASK" -> 0L
+                        else -> state?.positionMillis ?: 0L
+                    }
+                    if (state != null &&
+                        savedPosition > 5_000L &&
+                        state.durationMillis > 0L &&
+                        savedPosition < state.durationMillis - 2_000L &&
+                        _feedState.value.currentItemIndex == newIndex
+                    ) {
+                        withContext(Dispatchers.Main) {
+                            _feedState.update { it.copy(resumePositionMs = savedPosition) }
+                        }
+                    }
+                }
+            }
+
             // Load or generate chapters & subtitles
             loadIntelligenceForMedia(media)
         }
@@ -237,7 +280,9 @@ class FeedViewModel(
                 chapterDao?.getChaptersForMediaDirect(media.id) ?: emptyList()
             }
             if (existingChapters.isNotEmpty()) {
-                _feedState.update { it.copy(activeChapters = existingChapters) }
+                if (_feedState.value.currentItemIndex < mediaList.value.size && mediaList.value[_feedState.value.currentItemIndex].id == media.id) {
+                    _feedState.update { it.copy(activeChapters = existingChapters) }
+                }
             } else if (appSettings.value.enableAutoChapters && chapterGenerator != null) {
                 val generated = chapterGenerator.generateChaptersIfNeeded(media)
                 _feedState.update { it.copy(activeChapters = generated) }
@@ -247,7 +292,9 @@ class FeedViewModel(
             val existingSubs = withContext(Dispatchers.IO) {
                 subtitleDao?.getSubtitlesForMediaDirect(media.id) ?: emptyList()
             }
-            _feedState.update { it.copy(activeSubtitles = existingSubs) }
+            if (_feedState.value.currentItemIndex < mediaList.value.size && mediaList.value[_feedState.value.currentItemIndex].id == media.id) {
+                _feedState.update { it.copy(activeSubtitles = existingSubs) }
+            }
 
             // Trigger background speech recognition if enabled and none exists
             if (existingSubs.isEmpty() && appSettings.value.enableLocalTranscription && subtitleGenerator != null) {
@@ -258,7 +305,9 @@ class FeedViewModel(
                         profile = appSettings.value.transcriptionQuality
                     )
                     if (generatedSub != null) {
-                        _feedState.update { it.copy(activeSubtitles = listOf(generatedSub)) }
+                        if (_feedState.value.currentItemIndex < mediaList.value.size && mediaList.value[_feedState.value.currentItemIndex].id == media.id) {
+                            _feedState.update { it.copy(activeSubtitles = listOf(generatedSub)) }
+                        }
                     }
                 }
             }
@@ -313,14 +362,48 @@ class FeedViewModel(
     }
 
     fun refreshStream(media: ScrapedMedia) {
-        if (streamResolver == null) return
+        val resolver = streamResolver ?: return
         viewModelScope.launch {
-            _feedState.update { it.copy(isRefreshingStream = true, statusMessage = "Refreshing stream from source...") }
-            try {
-                streamResolver.refreshStream(media, appSettings.value)
-                _feedState.update { it.copy(isRefreshingStream = false, statusMessage = "Stream refreshed!") }
-            } catch (_: Exception) {
-                _feedState.update { it.copy(isRefreshingStream = false, statusMessage = "Failed to refresh stream") }
+            val settings = appSettings.value
+            val attempts = settings.maxRefreshRetries.coerceIn(1, 5)
+            _feedState.update {
+                it.copy(
+                    isRefreshingStream = true,
+                    statusMessage = "Refreshing stream from source..."
+                )
+            }
+
+            var lastError = "Failed to refresh stream"
+            var stopRetrying = false
+            for (attempt in 0 until attempts) {
+                if (stopRetrying) break
+                if (attempt > 0) delay((250L * attempt).coerceAtMost(1000L))
+                try {
+                    when (val result = resolver.refreshStream(media, settings)) {
+                        is StreamResolutionResult.Success -> {
+                            _feedState.update {
+                                it.copy(
+                                    isRefreshingStream = false,
+                                    statusMessage = "Stream refreshed successfully"
+                                )
+                            }
+                            return@launch
+                        }
+                        is StreamResolutionResult.Error -> {
+                            lastError = result.message
+                            stopRetrying = result.isUnsupported
+                        }
+                    }
+                } catch (e: Exception) {
+                    lastError = e.message ?: lastError
+                }
+            }
+
+            _feedState.update {
+                it.copy(
+                    isRefreshingStream = false,
+                    statusMessage = lastError
+                )
             }
         }
     }
@@ -346,7 +429,15 @@ class FeedViewModel(
         val currentIdx = _feedState.value.currentItemIndex
         val media = mediaList.value.getOrNull(currentIdx)
         if (media != null && durationMs > 0 && playbackStateDao != null) {
+            val now = System.currentTimeMillis()
             val isCompleted = (positionMs.toFloat() / durationMs.toFloat()) >= (appSettings.value.markWatchedThreshold / 100f)
+            if (media.id == lastPersistedMediaId &&
+                now - lastPlaybackPersistAt < 1000L &&
+                (!isCompleted || lastPersistedCompleted)
+            ) return
+            lastPlaybackPersistAt = now
+            lastPersistedMediaId = media.id
+            lastPersistedCompleted = isCompleted
             viewModelScope.launch(Dispatchers.IO) {
                 playbackStateDao.upsertPlaybackState(
                     PlaybackState(

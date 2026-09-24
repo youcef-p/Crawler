@@ -220,6 +220,12 @@ class MediaRepositoryImpl(
             obj.put("fileExtension", item.fileExtension)
             obj.put("discoveredTimestamp", item.discoveredTimestamp)
             obj.put("isDynamic", item.isDynamic)
+            obj.put("durationMillis", item.durationMillis ?: JSONObject.NULL)
+            obj.put("width", item.width ?: JSONObject.NULL)
+            obj.put("height", item.height ?: JSONObject.NULL)
+            obj.put("hdrType", item.hdrType ?: JSONObject.NULL)
+            obj.put("frameRate", item.frameRate ?: JSONObject.NULL)
+            obj.put("fileExtension", item.fileExtension)
             array.put(obj)
         }
         array.toString(2)
@@ -241,6 +247,11 @@ class MediaRepositoryImpl(
                 val normalizedName = obj.optString("normalizedName", MediaNormalizer.normalizeMediaName(url))
                 val fileExt = obj.optString("fileExtension", MediaNormalizer.extractExtension(url))
                 val isDynamic = obj.optBoolean("isDynamic", false)
+                val durationMillis = if (obj.isNull("durationMillis")) null else obj.optLong("durationMillis")
+                val width = if (obj.isNull("width")) null else obj.optInt("width")
+                val height = if (obj.isNull("height")) null else obj.optInt("height")
+                val hdrType = obj.optString("hdrType").ifBlank { null }
+                val frameRate = if (obj.isNull("frameRate")) null else obj.optDouble("frameRate").toFloat()
 
                 val media = ScrapedMedia(
                     url = url,
@@ -251,7 +262,12 @@ class MediaRepositoryImpl(
                     sourceDomain = sourceDomain,
                     normalizedName = normalizedName,
                     fileExtension = fileExt,
-                    isDynamic = isDynamic
+                    isDynamic = isDynamic,
+                    durationMillis = durationMillis,
+                    width = width,
+                    height = height,
+                    hdrType = hdrType,
+                    frameRate = frameRate
                 )
                 val res = mediaDao.insertMedia(media)
                 if (res > 0) count++

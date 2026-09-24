@@ -106,8 +106,24 @@ class DynamicStreamResolver(
                 )
             }
 
-            // Pick the best match (e.g. matching format or first HLS/DASH/video)
-            val best = captureResults.firstOrNull { it.candidate.mediaType == media.mediaType } ?: captureResults.first()
+            // Rank captured streams instead of assuming the first network request is best.
+            val sourceDomain = media.sourceDomain.lowercase()
+            val best = captureResults.maxByOrNull { capture ->
+                var score = capture.candidate.priority
+                if (capture.candidate.mediaType == media.mediaType) score += 600
+                if (capture.candidate.mediaType.name == "HLS" || capture.candidate.mediaType.name == "DASH") score += 150
+                val candidateDomain = com.example.reelscraper.data.util.MediaNormalizer.normalizeDomain(capture.candidate.url)
+                if (candidateDomain == sourceDomain) score += 80
+                val lowerUrl = capture.candidate.url.lowercase()
+                if (lowerUrl.contains("master") || lowerUrl.contains("manifest") || lowerUrl.contains("playlist")) score += 40
+                if (lowerUrl.contains("ads") || lowerUrl.contains("tracking") || lowerUrl.contains("analytics")) score -= 250
+                score
+            } ?: return@withContext StreamResolutionResult.Error(
+                message = "Dynamic capture returned no usable stream candidates.",
+                isUnsupported = true
+            )
+
+            sessionDao.deactivateSessionsForMedia(media.id)
             val newSession = best.session.copy(
                 mediaId = media.id,
                 capturedAt = System.currentTimeMillis(),
