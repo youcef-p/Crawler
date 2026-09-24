@@ -8,6 +8,11 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.reelscraper.data.model.CrawlJob
+import com.example.reelscraper.data.model.PlaybackState
+import com.example.reelscraper.data.model.Chapter
+import com.example.reelscraper.data.model.SubtitleTrack
+import com.example.reelscraper.data.model.TrickPlayAsset
+import com.example.reelscraper.data.model.HeatmapBucket
 import com.example.reelscraper.data.model.ExtractionRule
 import com.example.reelscraper.data.model.ScrapedMedia
 import com.example.reelscraper.data.model.SiteProfile
@@ -19,9 +24,14 @@ import com.example.reelscraper.data.model.StreamSession
         StreamSession::class,
         SiteProfile::class,
         ExtractionRule::class,
-        CrawlJob::class
+        CrawlJob::class,
+        PlaybackState::class,
+        Chapter::class,
+        SubtitleTrack::class,
+        TrickPlayAsset::class,
+        HeatmapBucket::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -30,6 +40,11 @@ abstract class ReelScraperDatabase : RoomDatabase() {
     abstract fun streamSessionDao(): StreamSessionDao
     abstract fun siteProfileDao(): SiteProfileDao
     abstract fun crawlJobDao(): CrawlJobDao
+    abstract fun playbackStateDao(): PlaybackStateDao
+    abstract fun chapterDao(): ChapterDao
+    abstract fun subtitleTrackDao(): SubtitleTrackDao
+    abstract fun trickPlayDao(): TrickPlayDao
+    abstract fun heatmapDao(): HeatmapDao
 
     companion object {
         @Volatile
@@ -166,6 +181,89 @@ abstract class ReelScraperDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS playback_states (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        mediaId INTEGER NOT NULL,
+                        positionMillis INTEGER NOT NULL,
+                        durationMillis INTEGER NOT NULL,
+                        watchedPercent REAL NOT NULL,
+                        playCount INTEGER NOT NULL,
+                        lastPlayedAt INTEGER NOT NULL,
+                        completed INTEGER NOT NULL,
+                        preferredAudioTrack TEXT,
+                        preferredSubtitleTrack TEXT,
+                        preferredQuality TEXT
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_playback_states_mediaId ON playback_states(mediaId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_playback_states_lastPlayedAt ON playback_states(lastPlayedAt)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS chapters (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        mediaId INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        positionMillis INTEGER NOT NULL,
+                        source TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_chapters_mediaId ON chapters(mediaId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_chapters_mediaId_positionMillis ON chapters(mediaId, positionMillis)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS subtitle_tracks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        mediaId INTEGER NOT NULL,
+                        label TEXT NOT NULL,
+                        language TEXT NOT NULL,
+                        sourceUrl TEXT,
+                        localUri TEXT,
+                        type TEXT NOT NULL,
+                        format TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_subtitle_tracks_mediaId ON subtitle_tracks(mediaId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_subtitle_tracks_language ON subtitle_tracks(language)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS trick_play_assets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        mediaId INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        imageUrl TEXT,
+                        vttUrl TEXT,
+                        tileWidth INTEGER NOT NULL,
+                        tileHeight INTEGER NOT NULL,
+                        columns INTEGER NOT NULL,
+                        rows INTEGER NOT NULL,
+                        intervalMillis INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_trick_play_assets_mediaId ON trick_play_assets(mediaId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_trick_play_assets_type ON trick_play_assets(type)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS heatmap_buckets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        mediaId INTEGER NOT NULL,
+                        bucketStartMillis INTEGER NOT NULL,
+                        bucketEndMillis INTEGER NOT NULL,
+                        replayCount INTEGER NOT NULL,
+                        seekCount INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_heatmap_buckets_mediaId ON heatmap_buckets(mediaId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_heatmap_buckets_mediaId_bucketStartMillis ON heatmap_buckets(mediaId, bucketStartMillis)")
+            }
+        }
+
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
@@ -207,7 +305,7 @@ abstract class ReelScraperDatabase : RoomDatabase() {
                     ReelScraperDatabase::class.java,
                     "reel_scraper_database"
                 )
-                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .addCallback(DB_CALLBACK)
                     .fallbackToDestructiveMigration(dropAllTables = false)
                     .build()
